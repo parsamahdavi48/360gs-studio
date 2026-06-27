@@ -593,9 +593,9 @@ def test_discover_scene_preview_candidates_finds_step4_sources(tmp_path: Path) -
     (output / "colmap_rig" / "masks").mkdir()
     for name in ("cameras.txt", "images.txt", "points3D.txt"):
         (colmap / name).write_text("", encoding="utf-8")
-    spheresfm = output / "spheresfm" / "sparse"
+    spheresfm = output / "colmap_equirect" / "sparse"
     spheresfm.mkdir(parents=True)
-    (output / "spheresfm" / "masks_colmap").mkdir()
+    (output / "colmap_equirect" / "masks_colmap").mkdir()
     for name in ("cameras.txt", "images.txt", "points3D.txt"):
         (spheresfm / name).write_text("", encoding="utf-8")
 
@@ -612,7 +612,7 @@ def test_discover_scene_preview_candidates_finds_step4_sources(tmp_path: Path) -
     assert by_kind["colmap"].path == colmap
     assert by_kind["colmap"].mask_root == output / "colmap_rig" / "masks"
     assert by_kind["spheresfm"].path == spheresfm
-    assert by_kind["spheresfm"].mask_root == output / "spheresfm" / "masks_colmap"
+    assert by_kind["spheresfm"].mask_root == output / "colmap_equirect" / "masks_colmap"
 
 
 def test_discover_scene_preview_candidates_uses_single_scene_metashape_ply(tmp_path: Path) -> None:

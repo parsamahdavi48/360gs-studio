@@ -116,7 +116,7 @@ def discover_scene_preview_candidates(scene_dir: Path) -> tuple[ScenePreviewCand
         candidates.append(
             ScenePreviewCandidate(
                 kind="spheresfm",
-                label=_sfm_label("SphereSfM SfM", record),
+                label=_sfm_label("COLMAP Spherical SfM", record),
                 path=sparse,
                 image_root=image_root if image_root.is_dir() else scene_images_dir(scene),
                 mask_root=_first_existing_dir(
@@ -348,9 +348,10 @@ def _spheresfm_sparse_models(scene: Path, records: list[ArtifactRecord]) -> tupl
         sparse = _resolve_colmap_model(artifact_root_path(scene, record))
         if sparse is not None:
             sparse_models.append((sparse, record))
-    fallback = _resolve_colmap_model(scene_output_dir(scene) / "spheresfm" / "sparse")
-    if fallback is not None:
-        sparse_models.append((fallback, None))
+    for project_name in ("colmap_equirect", "spheresfm"):
+        fallback = _resolve_colmap_model(scene_output_dir(scene) / project_name / "sparse")
+        if fallback is not None:
+            sparse_models.append((fallback, None))
     result: list[tuple[Path, ArtifactRecord | None]] = []
     seen: set[str] = set()
     for sparse, record in sparse_models:
@@ -669,7 +670,7 @@ def _shallow_colmap_dataset_dirs(output: Path) -> tuple[Path, ...]:
     for child in output.iterdir():
         if not child.is_dir():
             continue
-        if child.name.lower() == "spheresfm" or _is_preview_scan_excluded(child):
+        if child.name.lower() in {"colmap_equirect", "spheresfm"} or _is_preview_scan_excluded(child):
             continue
         if _resolve_colmap_model(child / "sparse") is not None or _resolve_colmap_model(child) is not None:
             roots.append(child)

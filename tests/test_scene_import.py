@@ -149,7 +149,7 @@ def test_scene_import_registers_route_specific_output_dataset(tmp_path: Path) ->
 def test_scene_import_prefers_existing_settings_output_root(tmp_path: Path) -> None:
     scene = tmp_path
     metashape_output = scene / "output" / "metashape_cubemap"
-    spheresfm_output = scene / "output" / "spheresfm_cubemap"
+    spheresfm_output = scene / "output" / "colmap_equirect_cubemap"
     _write_image(scene / "images" / "frame_0001.jpg")
     _write_image(metashape_output / "images" / "frame_0001_px.jpg", size=(64, 64))
     _write_transforms(metashape_output / "transforms.json")
@@ -160,7 +160,7 @@ def test_scene_import_prefers_existing_settings_output_root(tmp_path: Path) -> N
         json.dumps(
             {
                 "output_dir": str(spheresfm_output),
-                "portable_output": {"root": "output/spheresfm_cubemap"},
+                "portable_output": {"root": "output/colmap_equirect_cubemap"},
             }
         ),
         encoding="utf-8",
@@ -171,7 +171,7 @@ def test_scene_import_prefers_existing_settings_output_root(tmp_path: Path) -> N
     assert result.status == "ok"
     settings = json.loads(step4_export_settings_path(scene).read_text(encoding="utf-8"))
     assert settings["output_dir"] == str(spheresfm_output)
-    assert settings["portable_output"]["root"] == "output/spheresfm_cubemap"
+    assert settings["portable_output"]["root"] == "output/colmap_equirect_cubemap"
 
 
 def test_scene_import_registered_dataset_artifact_tracks_imported_output(tmp_path: Path) -> None:

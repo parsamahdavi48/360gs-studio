@@ -1,9 +1,8 @@
-"""Convert a SphereSfM sparse model to equirectangular transforms.json.
+"""Convert a spherical COLMAP sparse model to equirectangular transforms.json.
 
-SphereSfM writes COLMAP sparse models with an additional SPHERE camera model
-(model id 11). COLMAP's stock Python helper does not always know that model, so
-this module uses the repository's small COLMAP reader instead of depending on
-the vendored SphereSfM checkout.
+COLMAP 4.1+ writes native EQUIRECTANGULAR camera models (model id 17). Older
+SphereSfM sparse models used SPHERE (model id 11), so both are accepted for
+conversion.
 """
 from __future__ import annotations
 
@@ -12,6 +11,8 @@ import os
 from pathlib import Path
 
 from core.colmap_sparse_model import Camera, Point3D, colmap_pose_to_c2w, read_model, resolve_image_path
+
+SPHERICAL_CAMERA_MODELS = {"SPHERE", "EQUIRECTANGULAR"}
 
 
 def output_file_path(image_path: Path, images_dir: Path, output_dir: Path, mode: str) -> str:
@@ -32,17 +33,23 @@ def output_file_path(image_path: Path, images_dir: Path, output_dir: Path, mode:
 
 
 def camera_payload(camera: Camera) -> dict[str, float | int]:
-    f = float(camera.params[0]) if camera.params else float(camera.width) / 2.0
-    cx = float(camera.params[1]) if len(camera.params) > 1 else (camera.width - 1) / 2.0
-    cy = float(camera.params[2]) if len(camera.params) > 2 else (camera.height - 1) / 2.0
-    return {
+    payload: dict[str, float | int] = {
         "w": int(camera.width),
         "h": int(camera.height),
-        "fl_x": f,
-        "fl_y": f,
-        "cx": cx,
-        "cy": cy,
     }
+    if camera.model == "SPHERE":
+        f = float(camera.params[0]) if camera.params else float(camera.width) / 2.0
+        cx = float(camera.params[1]) if len(camera.params) > 1 else (camera.width - 1) / 2.0
+        cy = float(camera.params[2]) if len(camera.params) > 2 else (camera.height - 1) / 2.0
+        payload.update(
+            {
+                "fl_x": f,
+                "fl_y": f,
+                "cx": cx,
+                "cy": cy,
+            }
+        )
+    return payload
 
 
 def write_ascii_ply(path: Path, points: dict[int, Point3D]) -> None:
@@ -80,9 +87,13 @@ def convert(
     output_dir.mkdir(parents=True, exist_ok=True)
     ordered_images = sorted(images.values(), key=lambda image: (image.name.lower(), image.image_id))
     first_camera = cameras[ordered_images[0].camera_id]
-    if any(cameras[image.camera_id].model != "SPHERE" for image in ordered_images):
-        models = sorted({cameras[image.camera_id].model for image in ordered_images})
-        raise ValueError(f"SphereSfM export requires SPHERE cameras, got: {', '.join(models)}")
+    models = sorted({cameras[image.camera_id].model for image in ordered_images})
+    unsupported = [model for model in models if model not in SPHERICAL_CAMERA_MODELS]
+    if unsupported:
+        raise ValueError(
+            "Spherical COLMAP export requires SPHERE or EQUIRECTANGULAR cameras, "
+            f"got: {', '.join(models)}"
+        )
 
     frames: list[dict] = []
     for image in ordered_images:
@@ -100,9 +111,10 @@ def convert(
         **camera_payload(first_camera),
         "frames": frames,
         "source": {
-            "type": "spheresfm_colmap_sparse",
+            "type": "colmap_spherical_sparse",
             "model_dir": str(resolved_model),
             "images_dir": str(images_dir),
+            "camera_models": models,
             "camera_convention": "opengl" if opengl_camera else "colmap",
         },
     }

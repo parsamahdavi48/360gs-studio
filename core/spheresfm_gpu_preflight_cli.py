@@ -1,4 +1,4 @@
-"""CLI adapter for SphereSfM GPU SIFT preflight."""
+"""CLI adapter for COLMAP spherical SfM GPU SIFT preflight."""
 
 from __future__ import annotations
 
@@ -12,8 +12,8 @@ import core.spheresfm_gpu_preflight as preflight
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Check whether SphereSfM GPU SIFT can run on one image.")
-    parser.add_argument("--colmap", required=True, help="SphereSfM colmap executable")
+    parser = argparse.ArgumentParser(description="Check whether COLMAP 4.1 spherical GPU SIFT can run on one image.")
+    parser.add_argument("--colmap", required=True, help="COLMAP 4.1+ executable")
     parser.add_argument("--images-dir", required=True, type=Path)
     parser.add_argument("--work-dir", required=True, type=Path)
     parser.add_argument("--camera-params", required=True)
@@ -34,7 +34,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     source = images[0]
     target = preflight_images / f"preflight_000001{source.suffix.lower()}"
     shutil.copy2(source, target)
-    print(f"SphereSfM GPU preflight image: {source}", flush=True)
+    print(f"COLMAP spherical GPU preflight image: {source}", flush=True)
 
     database = args.work_dir / "database.db"
     preflight.run_colmap_command(
@@ -44,13 +44,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             "--database_path",
             str(database),
         ],
-        "SphereSfM preflight database_creator",
+        "COLMAP spherical preflight database_creator",
     )
     preflight.run_colmap_command(
         preflight.build_feature_command(args.colmap, database, preflight_images, args.camera_params),
-        "SphereSfM preflight feature_extractor",
+        "COLMAP spherical preflight feature_extractor",
     )
-    print("SphereSfM GPU preflight passed.", flush=True)
+    print("COLMAP spherical GPU preflight passed.", flush=True)
     return 0
 
 

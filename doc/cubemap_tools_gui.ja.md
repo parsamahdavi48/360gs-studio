@@ -1,15 +1,14 @@
 # Step 4 SfM / Step 5 データセットGUI
 
-Step 4は、学習データセットの元になるカメラポーズと疎点群をどう用意するかを選ぶ画面です。すでにMetashape、RealityScan、COLMAP、SphereSfMなどでSfM済みなら、ここで追加作業をする必要はありません。これからこのアプリでCOLMAPやSphereSfMを実行したい場合、またはMetashape結果からRealityScan再アライン用データを作りたい場合だけ、対応するカードを開きます。
+Step 4は、学習データセットの元になるカメラポーズと疎点群をどう用意するかを選ぶ画面です。すでにMetashape、RealityScan、COLMAP、COLMAP球面SfMなどでSfM済みなら、ここで追加作業をする必要はありません。これからこのアプリでCOLMAPを実行したい場合、またはMetashape結果からRealityScan再アライン用データを作りたい場合だけ、対応するカードを開きます。
 
-Step 5は、SfM結果を学習アプリで読み込めるデータセットへ変換する画面です。Metashape、COLMAP、SphereSfMの結果からNeRF系JSON/PLYを作る、MetashapeやRealityScanの結果からCOLMAP形式データセットを作る、AprilTagでスケールを反映する、といった作業をここで行います。
+Step 5は、SfM結果を学習アプリで読み込めるデータセットへ変換する画面です。Metashape、COLMAP、COLMAP球面SfMの結果からNeRF系JSON/PLYを作る、MetashapeやRealityScanの結果からCOLMAP形式データセットを作る、AprilTagでスケールを反映する、といった作業をここで行います。
 
 ## 関連ツール
 
 | ツール | このアプリでの用途 |
 | --- | --- |
-| [COLMAP](https://github.com/colmap/colmap) | Step 4のCOLMAPルートとCOLMAP形式データセット出力 |
-| [SphereSfM](https://github.com/json87/SphereSfM) | Step 4の球面画像SfMルート |
+| [COLMAP](https://github.com/colmap/colmap) | Step 4のCOLMAPルート、COLMAP 4.1以降のネイティブEQUIRECTANGULAR球面SfM、COLMAP形式データセット出力 |
 | [LichtFeld Studio](https://lichtfeld.io/) | LichtFeldプリセット、GUT出力、RealityScanからCOLMAPデータセットへの変換先 |
 | [Postshot](https://www.jawset.com/) | PostshotプリセットとStep 6のCLI起動 |
 | [Brush](https://github.com/ArthurBrussee/brush) | オープンソースのGaussian Splatting学習向けCubemap出力 |
@@ -24,7 +23,7 @@ Step 5は、SfM結果を学習アプリで読み込めるデータセットへ�
 | RealityScanで再アライン済み | Step 4は `既存のSfM結果を使う`。Step 5で `RealityScan → COLMAPデータセット` を選ぶ |
 | COLMAPのimages/masks/sparseがすでにある | Step 4は `既存のSfM結果を使う`。COLMAP対応アプリならそのまま学習へ進み、Nerfstudio用JSON/PLYが必要なら `COLMAP RIG → NeRFデータセット(JSON/PLY)` を使う |
 | このアプリからCOLMAPでSfMしたい | Step 4で `COLMAPでSfMを実行` |
-| このアプリからSphereSfMでSfMしたい | Step 4で `SphereSfMでSfMを実行` |
+| 同一解像度のERP 360°画像を球面カメラのままSfMしたい | Step 4で `COLMAP 4.1球面SfMを実行` |
 | Metashape結果をRealityScanで再アラインしたい | Step 4で `Metashape → RealityScan用データ作成` |
 | 作成済み結果を確認したい | Step 4で `SfM結果を確認` |
 
@@ -32,7 +31,7 @@ Step 5は、SfM結果を学習アプリで読み込めるデータセットへ�
 
 ### 既存のSfM結果を使う
 
-Metashape、RealityScan、COLMAP、SphereSfMなどで、すでにカメラポーズと疎点群を作ってある場合に選びます。このカードは「何もしないで次へ進む」ための選択肢です。次のStep 5で、その結果をどのデータセット形式へ変換するかを選びます。
+Metashape、RealityScan、COLMAP、COLMAP球面SfMなどで、すでにカメラポーズと疎点群を作ってある場合に選びます。このカードは「何もしないで次へ進む」ための選択肢です。次のStep 5で、その結果をどのデータセット形式へ変換するかを選びます。
 
 Metashape結果を使う場合は、カメラをAgisoft XML、疎点群をStanford PLYとしてエクスポートします。どちらもシーンフォルダに保存しておくと、SfM結果をシーンと一緒に管理しやすくなります。別の場所に保存した場合は、Step 5のカードでXMLとPLYを手動選択してください。
 
@@ -49,13 +48,13 @@ Metashapeを使わず、このアプリから[COLMAP](https://github.com/colmap/
 
 通常画像のカメラはGUIでは自動推定を使います。明示的な校正済み内部パラメータが必要な場合は、このStepで手入力するのではなく、取り込み前の外部メタデータとして用意します。
 
-### SphereSfMでSfMを実行
+### COLMAP 4.1球面SfMを実行
 
-エクイレクタングラー360°画像を球面カメラとしてSfMしたい場合に選びます。[SphereSfM](https://github.com/json87/SphereSfM)は同一解像度のERP 360°画像だけを入力にするのが安全です。通常画像や複数解像度ERPを混ぜたい場合はCOLMAPまたはMetashapeを使ってください。
+エクイレクタングラー360°画像を、Cubemapへ投影せず球面カメラとしてSfMしたい場合に選びます。このルートは公式[COLMAP](https://github.com/colmap/colmap) 4.1以降のネイティブ `EQUIRECTANGULAR` カメラモデルを使います。同一解像度のERP 360°画像だけを入力にするのが安全です。通常画像や複数解像度ERPを混ぜたい場合は、Cubemap化するCOLMAPルートまたはMetashapeを使ってください。
 
-通常のCOLMAPではなく、SphereSfM版の `colmap.exe` が必要です。RTX 50系GPUでは配布バイナリがCUDA SIFTで止まる場合があるため、その場合はRTX 50系に対応したビルドを指定します。
+COLMAP 4.1以降の `colmap.exe` を指定してください。RTX 50系GPUでは古いCUDAビルドがGPU SIFTで止まる場合があるため、その場合はGPUに対応したCUDAアーキテクチャでビルドされたCOLMAPを指定します。
 
-出力されるSfM作業フォルダは `output/spheresfm/` です。学習アプリへ渡すJSON/PLYやCubemapデータは、Step 5で `SphereSfM → NeRFデータセット(JSON/PLY)` を実行して作ります。
+SfM作業フォルダは `output/colmap_equirect/` です。学習アプリへ渡すJSON/PLYやCubemapデータは、Step 5で `COLMAP球面 → NeRFデータセット(JSON/PLY)` を実行して作ります。
 
 ### Metashape → RealityScan用データ作成
 
@@ -118,11 +117,11 @@ RealityScanからエクスポートする前に、学習に使うコンポーネ
 
 `レンズ補正してPINHOLE化` は、RealityScanで通常画像も混ぜてアラインし、LichtFeldが歪みつきカメラを受け付けず止まる場合に使います。Cubemap由来のPINHOLE画像は出力先へリンクまたはコピーし、歪み係数を持つ通常画像だけを補正します。補正で生じる無効領域はマスクにも反映されます。
 
-### SphereSfM → NeRFデータセット(JSON/PLY)
+### COLMAP球面 → NeRFデータセット(JSON/PLY)
 
-Step 4で作ったSphereSfM sparse、または別途指定したSphereSfM sparseから、JSON/PLYデータセットを作ります。
+Step 4で作ったCOLMAP球面sparse、または別途指定した `EQUIRECTANGULAR` / 旧 `SPHERE` カメラのCOLMAP sparseから、JSON/PLYデータセットを作ります。
 
-SphereSfM入力は同一解像度のERP 360°画像に限定するのが安全です。出力は、LichtFeldでGUTを使うERP 360°データ、またはPostshot / Brush / LichtFeldで扱いやすいPINHOLE Cubemapデータから選びます。
+COLMAP球面SfM入力は同一解像度のERP 360°画像に限定するのが安全です。出力は、LichtFeldでGUTを使うERP 360°データ、またはPostshot / Brush / LichtFeldで扱いやすいPINHOLE Cubemapデータから選びます。
 
 ### スケール調整
 
@@ -168,7 +167,7 @@ Step 5のマスク設定は、学習データセット出力専用です。Step 
 
 Step 4の `SfM結果を確認` から、点群、カメラ位置、画像、マスクを同じ画面で確認できます。
 
-プレビューでは、出力済みデータセット、Metashape XML/PLY、COLMAP sparse、SphereSfM sparseなどを候補として選べます。カメラをクリックすると、そのカメラ画像と対応マスクを確認できます。
+プレビューでは、出力済みデータセット、Metashape XML/PLY、COLMAP sparse、COLMAP球面sparseなどを候補として選べます。カメラをクリックすると、そのカメラ画像と対応マスクを確認できます。
 
 ## よくある判断
 
@@ -179,7 +178,7 @@ Step 4の `SfM結果を確認` から、点群、カメラ位置、画像、マ�
 - 完成済みCOLMAP結果をNerfstudioで学習したい場合は、`変換不要` カードではなく `COLMAP RIG → NeRFデータセット(JSON/PLY)` を使います。
 - RealityScanからPostshotへ渡すだけならCSV/PLYで足りる場合があります。LichtFeldでDatasetとして読みたい場合は `RealityScan → COLMAPデータセット` を使います。
 - Metashape → RealityScan → LichtFeldのルートでは、Metashape XML/PLYとRealityScan CSV/PLYをシーンと一緒に管理し、最終的に `output/realityscan/lfs_colmap/` を学習に使います。
-- SphereSfMは同一解像度ERP 360°専用と考えてください。混在ソースはCOLMAPまたはMetashapeを使います。
+- COLMAP球面SfMは同一解像度ERP 360°専用と考えてください。混在ソースはCubemap化するCOLMAPルートまたはMetashapeを使います。
 - 画像やマスクだけを作り直したい場合は、同じカードを開き、出力設定を確認して再実行します。
 
 ## Step 6へ進む

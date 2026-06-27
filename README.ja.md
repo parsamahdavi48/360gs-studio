@@ -1,18 +1,18 @@
 # stechdrive-3dgs-utils
 
-**v1.24.6**
+**v1.25.0**
 
 ## これは何？
 
 360°動画、通常動画、連番静止画から、3D Gaussian Splatting (3DGS) 向けの画像・マスク・カメラデータを作るWindows GUIアプリです。
 
-主な用途は、Insta360 / Osmo 360などのERP/エクイレクタングラー素材を整理・マスクしてMetashapeでSfMし、その結果をPostshot、Brush、LichtFeld Studio、COLMAP形式、RealityScan再アライン向けデータへ変換するワークフローです。通常画像/動画、アプリ内COLMAP/SphereSfM、RealityScanからLichtFeldへの変換にも対応しています。
+主な用途は、Insta360 / Osmo 360などのERP/エクイレクタングラー素材を整理・マスクしてMetashapeでSfMし、その結果をPostshot、Brush、LichtFeld Studio、COLMAP形式、RealityScan再アライン向けデータへ変換するワークフローです。通常画像/動画、COLMAP 4.1以降のネイティブ球面SfMを含むアプリ内COLMAPルート、RealityScanからLichtFeldへの変換にも対応しています。
 
 ## ダウンロード
 
 通常利用は、最新リリースZIPをダウンロードしてください。
 
-[stechdrive-3dgs-utils-v1.24.6.zip をダウンロード](https://github.com/stechdrive/stechdrive-3dgs-utils/releases/download/v1.24.6/stechdrive-3dgs-utils-v1.24.6.zip)
+[stechdrive-3dgs-utils-v1.25.0.zip をダウンロード](https://github.com/stechdrive/stechdrive-3dgs-utils/releases/download/v1.25.0/stechdrive-3dgs-utils-v1.25.0.zip)
 
 ZIPを展開したら、`setup_windows.bat`、続いて `run_gui.bat` を実行します。
 
@@ -26,13 +26,13 @@ ZIPを展開したら、`setup_windows.bat`、続いて `run_gui.bat` を実行�
 
 ### 1. 360°/通常画像を混在させたSfM前処理
 
-Insta360 / Osmo 360などの360°動画、スマホやデジタル一眼の通常動画、既に切り出した連番静止画を同じシーンに登録できます。Step 2で採用/除外を確認し、Step 3で人物、撮影者、三脚、空、スティッチ境界、白飛びなどをマスクしてから、Metashape、COLMAP、SphereSfM、RealityScanなどへ渡せます。
+Insta360 / Osmo 360などの360°動画、スマホやデジタル一眼の通常動画、既に切り出した連番静止画を同じシーンに登録できます。Step 2で採用/除外を確認し、Step 3で人物、撮影者、三脚、空、スティッチ境界、白飛びなどをマスクしてから、Metashape、COLMAP、COLMAP球面SfM、RealityScanなどへ渡せます。
 
 MetashapeでSfMした結果は、`transforms_postshot.json` / `pointcloud_postshot.ply` のような出力プリセット別のNeRF系JSON/PLY、COLMAP形式データセット、またはRealityScan再アライン用のCubemap/XMPへ変換できます。LichtFeld Studio、Postshot、Brushなど、読み込ませる学習アプリに合わせてStep 5で出力形式を選びます。
 
 ### 2. アプリ内でSfMする
 
-Metashapeを使わない場合は、Step 4でCOLMAPまたはSphereSfMを実行できます。COLMAPは360°画像をCubemap Rigへ展開し、通常画像は通常カメラとして扱うため、混在ソースを使いたい場合に向いています。SphereSfMは同一解像度のエクイレクタングラー360°画像だけを入力にするルートです。
+Metashapeを使わない場合は、Step 4でCOLMAPルートを直接実行できます。通常のCOLMAPルートは360°画像をCubemap Rigへ展開し、通常画像は通常カメラとして扱うため、混在ソースを使いたい場合に向いています。COLMAP 4.1以降の球面ルートは、同一解像度のエクイレクタングラー360°画像をネイティブ `EQUIRECTANGULAR` カメラのまま扱います。
 
 ### 3. RealityScanからLichtFeldへ
 
@@ -51,8 +51,8 @@ RealityScanで再アラインしたCSV/PLYを、LichtFeldでDatasetとして開�
 - SAM3.1では、既存マスクに対して「三脚を追加する」「看板やロゴの誤検出を外す」といった加算/減算の補正ができます。手作業で塗り直す量を減らせます。
 - YOLO26-semの初期ターゲットは `person` と `sky` です。車両、植生、その他のCityscapesクラスは、素材に必要な場合だけ追加します。
 - 360°画像だけでなく、通常動画からのフレーム抽出や通常画像の連番画像にも使えます。人物・車両・空・白飛びなどを、SfMに渡す前のマスク前処理としてまとめて作成できます。
-- Step 4では、外部SfM結果を使うか、COLMAP/SphereSfMをこのアプリから実行するかを選びます。COLMAPは360°画像のCubemap Rigと通常画像カメラの混在に対応し、SphereSfMは同一解像度のエクイレクタングラー360°画像だけを扱うルートです。
-- Step 5では、Metashape / SphereSfM / RealityScan / COLMAPの結果から、NeRF系JSON/PLY、COLMAP形式データセット、LichtFeld向けRealityScan変換、AprilTagスケール補正などを選んで実行できます。
+- Step 4では、外部SfM結果を使うか、COLMAP Cubemap RigまたはCOLMAP 4.1以降の球面SfMをこのアプリから実行するかを選びます。
+- Step 5では、Metashape / COLMAP球面 / RealityScan / COLMAPの結果から、NeRF系JSON/PLY、COLMAP形式データセット、LichtFeld向けRealityScan変換、AprilTagスケール補正などを選んで実行できます。
 - シーンプレビューで、SfM結果やデータセットの点群、カメラ位置、選択カメラの画像、対応マスクを同じ画面で確認できます。Step 4のビューワーカードから開けます。
 - AprilTagを撮影前に印刷・配置しておけば、Step 5の `スケール調整` で出力済みデータセットからメートル換算のスケールを推定できます。推定値を確認してから、対象データセットのカメラ位置と点群へ同じscaleを反映できます。
 - Windows向けセットアップスクリプトで、Python環境、FFmpeg/FFprobe、主要Pythonパッケージの準備をまとめて行えます。通常利用は `run_gui.bat` から起動し、リリース更新は `update.bat` から実行できます。
@@ -127,8 +127,8 @@ checkpointを手動で `models/sam3.1/sam3.1_multiplex.pt` に置くこともで
   -> Step 2: フレーム確認・採用/除外
   -> Step 3: マスク生成
   -> Step 4: SfM
-      -> 既存のMetashape / RealityScan / COLMAP / SphereSfM結果を使う
-      -> COLMAPまたはSphereSfMをこのアプリから実行する
+      -> 既存のMetashape / RealityScan / COLMAP / COLMAP球面結果を使う
+      -> COLMAP Cubemap RigまたはCOLMAP 4.1以降の球面SfMをこのアプリから実行する
       -> Metashape結果からRealityScan再アライン用データを作る
   -> Step 5: データセット
       -> 学習アプリへ渡すJSON/PLYまたはCOLMAP形式データセットを作る
@@ -143,14 +143,13 @@ checkpointを手動で `models/sam3.1/sam3.1_multiplex.pt` に置くこともで
 | 1. フレーム抽出 | 動画からフレーム抽出、または静止画フォルダをシーンへ登録 | 固定間隔 + 変化補正 |
 | 2. フレーム確認 | 抽出フレームを単一/サムネイル表示で確認し、採用/除外をCSVに反映 | 低品質候補や不要フレームの確認に対応 |
 | 3. マスク生成 | 人物、スティッチ境界、白飛び、空、カスタムマスクを生成 | YOLO/SAM2.1、高品質設定 |
-| 4. SfM | カメラポーズと疎点群をどう用意するかを選択 | 既存SfM結果 / COLMAP / SphereSfM |
-| 5. データセット | SfM結果から学習アプリ向けデータセットを作成 | Metashape / RealityScan / SphereSfM / COLMAP / スケール調整 |
+| 4. SfM | カメラポーズと疎点群をどう用意するかを選択 | 既存SfM結果 / COLMAP / COLMAP球面 |
+| 5. データセット | SfM結果から学習アプリ向けデータセットを作成 | Metashape / RealityScan / COLMAP球面 / COLMAP / スケール調整 |
 | 6. 学習 | 作成済みデータセットで、対応CLIを持つ外部3DGSアプリを起動 | LichtFeld Studio / Postshot / Brush / gsplat |
 
 ## 関連ツール
 
-- [COLMAP](https://github.com/colmap/colmap): COLMAPルートとCOLMAP形式データセットで使うSfM/MVSツールです。
-- [SphereSfM](https://github.com/json87/SphereSfM): SphereSfMルートで使う、COLMAPベースの球面画像SfMです。
+- [COLMAP](https://github.com/colmap/colmap): COLMAP Cubemap Rigルート、COLMAP 4.1以降のネイティブ `EQUIRECTANGULAR` 球面SfMルート、COLMAP形式データセットで使うSfM/MVSツールです。
 - [LichtFeld Studio](https://lichtfeld.io/): LichtFeld向けデータセットプリセットとStep 6のCLI起動に対応する3DGS学習アプリです。
 - [Postshot](https://www.jawset.com/): Postshot向けデータセットプリセットとStep 6のCLI起動に対応する3DGS学習アプリです。
 - [Brush](https://github.com/ArthurBrussee/brush): Cubemap系出力を読み込める、オープンソースのGaussian Splattingトレーナーです。
@@ -173,8 +172,8 @@ checkpointを手動で `models/sam3.1/sam3.1_multiplex.pt` に置くこともで
 | --- | --- |
 | Metashape + キューブマップ | `output/metashape_cubemap/` |
 | Metashape + ERP 360° / GUT | `output/metashape_3dgut/` |
-| SphereSfM + キューブマップ | `output/spheresfm_cubemap/` |
-| SphereSfM + ERP 360° / GUT | `output/spheresfm_3dgut/` |
+| COLMAP球面 + キューブマップ | `output/colmap_equirect_cubemap/` |
+| COLMAP球面 + ERP 360° / GUT | `output/colmap_equirect_3dgut/` |
 | COLMAP Rig | `output/colmap_rig/` |
 | Metashape + COLMAP | `output/metashape_colmap/` |
 | RealityScan + LichtFeld COLMAP | `output/realityscan/lfs_colmap/` |
@@ -227,14 +226,14 @@ Metashapeでベースの360°画像を安定してSfMし、その結果をRealit
 3. [COLMAP](https://github.com/colmap/colmap)またはGLOMAPの実行ファイル、Matcher、Mapperを確認して実行します。
 4. 完了後は `output/colmap_rig/` をCOLMAPデータセットとして、COLMAP対応の3DGSアプリに渡します。追加変換が不要な場合はStep 5をスキップして学習へ進めます。
 
-## SphereSfMルート
+## COLMAP 4.1球面SfMルート
 
-1. Step 1からStep 3まではMetashapeルートと同じです。SphereSfMでは、同一解像度のエクイレクタングラー360°画像だけを入力にするのが安全です。
-2. Step 4で `SphereSfMでSfMを実行` を選び、[json87/SphereSfM](https://github.com/json87/SphereSfM) のリリースまたはローカルビルドで用意したSphereSfM版 `colmap.exe` を指定します。通常のCOLMAPでは球面画像用の機能が足りないため使えません。
-3. RTX 50系GPUでは、GitHub配布版バイナリはCUDA SIFTで停止することがあります。RTX 50系で使う場合は、SphereSfMを `CMAKE_CUDA_ARCHITECTURES=120` 付きで自前ビルドした `colmap.exe` を指定してください。
+1. Step 1からStep 3まではMetashapeルートと同じです。COLMAP球面SfMでは、同一解像度のエクイレクタングラー360°画像だけを入力にするのが安全です。
+2. Step 4で `COLMAP 4.1球面SfMを実行` を選び、公式COLMAP 4.1以降の `colmap.exe` を指定します。このルートはCOLMAPのネイティブ `EQUIRECTANGULAR` カメラモデルを使うため、fork版COLMAPは不要です。
+3. RTX 50系GPUでは、古いCUDAビルドがGPU SIFTで停止することがあります。その場合は、GPUに対応したCUDAアーキテクチャでビルドされたCOLMAPを指定してください。
 4. `Matcher: Sequential`, `SfM品質: 標準` から始めます。
-5. Step 5で `SphereSfM → NeRFデータセット(JSON/PLY)` を選び、PINHOLEのCubemapデータにするか、LichtFeld向けのERP 360°データにするかを選びます。
-6. 完了後は、`output/spheresfm_3dgut/` または `output/spheresfm_cubemap/` を下流アプリへ渡します。SphereSfMの作業ファイルとログは `output/spheresfm/` にまとまります。
+5. Step 5で `COLMAP球面 → NeRFデータセット(JSON/PLY)` を選び、PINHOLEのCubemapデータにするか、LichtFeld向けのERP 360°データにするかを選びます。
+6. 完了後は、`output/colmap_equirect_3dgut/` または `output/colmap_equirect_cubemap/` を下流アプリへ渡します。COLMAP球面SfMの作業ファイルは `output/colmap_equirect/` にまとまります。
 
 ## 通常画像・通常動画のマスク前処理
 

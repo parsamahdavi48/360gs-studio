@@ -213,7 +213,7 @@ def test_sfm_cards_open_in_step_sfm_pages_and_external_route_goes_to_dataset(tmp
         assert spheresfm_link.openExternalLinks()
         assert spheresfm_link.toolTip() == i18n.tip("SPHERESFM_REPOSITORY_LINK")
         assert i18n.t("SPHERESFM_REPOSITORY_LINK") in spheresfm_link.text()
-        assert "https://github.com/json87/SphereSfM" in spheresfm_link.text()
+        assert "https://github.com/colmap/colmap" in spheresfm_link.text()
         spheresfm_detail_layout = spheresfm_link.parentWidget().layout()
         assert spheresfm_detail_layout.indexOf(spheresfm_link) == spheresfm_detail_layout.count() - 1
 

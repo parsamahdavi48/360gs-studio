@@ -42,7 +42,7 @@ Step 6を開いたら、最初に「どのアプリで、どのデータを試�
 | Brushをヘッドレスで実行したい | `Brush` | `入力データ`, `出力PLY名`, `Iterations`, `Max Resolution` |
 | gsplatでCOLMAPデータを学習したい | `gsplat` | `COLMAP形式の入力データ`, `simple_trainer.py`, `Strategy`, `Max Steps`, `3DGUT` |
 
-`入力データ` は通常、自動設定のままで使います。登録済みのデータセット成果物があれば、Metashape、RealityScan、SphereSfM、COLMAPなどの最新データセットを `<scene>/output/` 配下から使います。`出力先` は既定で `<scene>/output/` です。データセットと学習結果を同じ `output/` 配下に置くことで、後から持ち出しやすくしています。
+`入力データ` は通常、自動設定のままで使います。登録済みのデータセット成果物があれば、Metashape、RealityScan、COLMAP球面、COLMAPなどの最新データセットを `<scene>/output/` 配下から使います。`出力先` は既定で `<scene>/output/` です。データセットと学習結果を同じ `output/` 配下に置くことで、後から持ち出しやすくしています。
 
 ## 基本操作
 
@@ -93,8 +93,8 @@ Step 6では中央パネルを広く使うため、左右2カラムに整理し�
 | --- | --- |
 | Metashape + PINHOLE Cubemap | `<scene>/output/metashape_cubemap/` |
 | Metashape + ERP 360° / GUT | `<scene>/output/metashape_3dgut/` |
-| SphereSfM + PINHOLE Cubemap | `<scene>/output/spheresfm_cubemap/` |
-| SphereSfM + ERP 360° / GUT | `<scene>/output/spheresfm_3dgut/` |
+| COLMAP球面 + PINHOLE Cubemap | `<scene>/output/colmap_equirect_cubemap/` |
+| COLMAP球面 + ERP 360° / GUT | `<scene>/output/colmap_equirect_3dgut/` |
 | COLMAP Rig | `<scene>/output/colmap_rig/` |
 | COLMAP RIG → NeRFデータセット(JSON/PLY) | `<scene>/output/colmap_nerfstudio/`。Nerfstudio側で直接使います |
 | RealityScan -> COLMAPデータセット | `<scene>/output/realityscan/lfs_colmap/` |
@@ -132,7 +132,7 @@ Step 6からCLI起動する場合は、v0.5.3互換のLichtFeld Studio CLIを目
 
 ### Cubemapデータを学習する場合
 
-Step 5で画像タイプ `PINHOLE` を選んだデータです。`入力データ` は通常、Metashapeルートでは `<scene>/output/metashape_cubemap/`、SphereSfMルートでは `<scene>/output/spheresfm_cubemap/` です。
+Step 5で画像タイプ `PINHOLE` を選んだデータです。`入力データ` は通常、Metashapeルートでは `<scene>/output/metashape_cubemap/`、COLMAP球面ルートでは `<scene>/output/colmap_equirect_cubemap/` です。
 
 `Metashape → COLMAPデータセット` と `RealityScan → COLMAPデータセット` も、LichtFeldではPINHOLE系データセットとして扱います。RealityScanルートでは `<scene>/output/realityscan/lfs_colmap/` を指定し、`GUT` はOFFで使います。
 
@@ -142,11 +142,11 @@ Step 5で画像タイプ `PINHOLE` を選んだデータです。`入力デー�
 
 ### ERP 360° / GUTデータを学習する場合
 
-Step 5で画像タイプ `ERP 360°` を選んだデータです。`入力データ` は通常、Metashapeルートでは `<scene>/output/metashape_3dgut/`、SphereSfMルートでは `<scene>/output/spheresfm_3dgut/` です。
+Step 5で画像タイプ `ERP 360°` を選んだデータです。`入力データ` は通常、Metashapeルートでは `<scene>/output/metashape_3dgut/`、COLMAP球面ルートでは `<scene>/output/colmap_equirect_3dgut/` です。
 
 - `GUT` をONにします。
 - 選択中の入力データ内に `pointcloud.ply` が必要です。
-- Step 5でMetashapeまたはSphereSfMからERP 360° / GUT用データを作成しておきます。
+- Step 5でMetashapeまたはCOLMAP球面からERP 360° / GUT用データを作成しておきます。
 
 ### Steps Scaler
 
@@ -180,7 +180,7 @@ Step 6からCLI起動する場合は、v1.0/v1.1 Release BuildのPostshot CLIを
 | Step 5のルート | Importで渡すもの |
 | --- | --- |
 | COLMAP | COLMAP sparseモデル |
-| SphereSfM | SphereSfM sparseモデル |
+| COLMAP球面 | EQUIRECTANGULARカメラのCOLMAP sparseモデル |
 | Metashape | `transforms_postshot.json` と `pointcloud_postshot.ply` など、選択中プリセットのカメラJSONと点群PLY |
 
 カメラポーズが見つからない状態で `Import` のまま起動すると、Step 6は実行前に止まります。先にStep 5でSfMまたは変換を実行するか、Postshot側に推定させるため `Estimate` に切り替えます。
@@ -233,7 +233,7 @@ Step 6はデータセットを作りません。直接読み込みでもCLI起�
 | 状態 | 対処 |
 | --- | --- |
 | `入力データ` に画像やカメラ情報がない | Step 5で目的のカードを選び、学習アプリに渡すデータセットを作成します。 |
-| SphereSfMのSfM結果だけがあり、学習用データセットがない | Step 5で `SphereSfM → NeRFデータセット(JSON/PLY)` を選び、PINHOLEまたはERP 360°で出力します。 |
+| COLMAP球面SfM結果だけがあり、学習用データセットがない | Step 5で `COLMAP球面 → NeRFデータセット(JSON/PLY)` を選び、PINHOLEまたはERP 360°で出力します。 |
 | LichtFeldの `GUT` をONにしたが `pointcloud.ply` がない | Step 5でERP 360° / GUT用データを作ります。 |
 | Postshotの `Camera Poses: Import` でポーズがない | Step 5でSfM/変換を実行するか、`Estimate` に切り替えます。 |
 
@@ -254,5 +254,5 @@ Step 6はデータセットを作りません。直接読み込みでもCLI起�
 - CLIで回すなら、LichtFeldは `GUT` OFF、Postshotは `Camera Poses: Import` から始めます。
 - LichtFeldでGUTを試すなら、Step 5で画像タイプ `ERP 360°` を選んでから、Step 6で `GUT` をONにします。
 - Postshotにポーズを推定させたい場合だけ `Camera Poses: Estimate` を使います。
-- COLMAPルートのデータはPINHOLEのCubemap用です。ERP 360° / GUT比較はMetashapeまたはSphereSfMルートで作ります。
+- COLMAP CubemapルートのデータはPINHOLE用です。ERP 360° / GUT比較はMetashapeまたはCOLMAP球面ルートで作ります。
 - 既存結果を残したい場合は、LichtFeldの出力PLY名、Postshotのプロジェクト名、または `出力先` を変えます。

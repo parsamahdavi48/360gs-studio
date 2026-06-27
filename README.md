@@ -1,18 +1,18 @@
 # stechdrive-3dgs-utils
 
-**v1.24.6**
+**v1.25.0**
 
 ## What Is This?
 
 A Windows GUI app that prepares images, masks, and camera data for 3D Gaussian Splatting (3DGS) training from 360° video, normal video, and still-image sequences.
 
-The main workflow is to organize and mask ERP/equirectangular footage from cameras such as Insta360 / Osmo 360, run SfM in Metashape, then convert the result into datasets for Postshot, Brush, LichtFeld Studio, COLMAP-format workflows, or RealityScan realignment. It also supports normal-camera images/video, in-app COLMAP/SphereSfM, and RealityScan-to-LichtFeld conversion.
+The main workflow is to organize and mask ERP/equirectangular footage from cameras such as Insta360 / Osmo 360, run SfM in Metashape, then convert the result into datasets for Postshot, Brush, LichtFeld Studio, COLMAP-format workflows, or RealityScan realignment. It also supports normal-camera images/video, in-app COLMAP routes including COLMAP 4.1+ native spherical SfM, and RealityScan-to-LichtFeld conversion.
 
 ## Download
 
 For normal use, download the latest release ZIP:
 
-[Download stechdrive-3dgs-utils-v1.24.6.zip](https://github.com/stechdrive/stechdrive-3dgs-utils/releases/download/v1.24.6/stechdrive-3dgs-utils-v1.24.6.zip)
+[Download stechdrive-3dgs-utils-v1.25.0.zip](https://github.com/stechdrive/stechdrive-3dgs-utils/releases/download/v1.25.0/stechdrive-3dgs-utils-v1.25.0.zip)
 
 After extracting the ZIP, run `setup_windows.bat`, then `run_gui.bat`.
 
@@ -26,13 +26,13 @@ After extracting the ZIP, run `setup_windows.bat`, then `run_gui.bat`.
 
 ### 1. SfM Preprocessing for 360° and Normal Images
 
-Register 360° video from Insta360 / Osmo 360 or similar cameras, normal video from smartphones or mirrorless cameras, and still-image folders in the same scene. Review keep/drop decisions in Step 2, then mask people, the camera operator, tripods, sky, stitch seams, blown-out highlights, and similar areas in Step 3 before sending the images to Metashape, COLMAP, SphereSfM, or RealityScan.
+Register 360° video from Insta360 / Osmo 360 or similar cameras, normal video from smartphones or mirrorless cameras, and still-image folders in the same scene. Review keep/drop decisions in Step 2, then mask people, the camera operator, tripods, sky, stitch seams, blown-out highlights, and similar areas in Step 3 before sending the images to Metashape, COLMAP, COLMAP spherical SfM, or RealityScan.
 
 After Metashape SfM, create a NeRF-style JSON/PLY dataset with profile-specific names such as `transforms_postshot.json` / `pointcloud_postshot.ply`, a COLMAP-format dataset, or cubemap/XMP data for RealityScan realignment. In Step 5, choose the output format based on the training app you plan to use, such as LichtFeld Studio, Postshot, or Brush.
 
 ### 2. Run SfM Inside the App
 
-If you are not using Metashape, Step 4 can run COLMAP or SphereSfM. COLMAP expands 360° images into cubemap rigs while keeping normal images as normal cameras, so it is the better route for mixed sources. SphereSfM is for same-resolution equirectangular 360° images only.
+If you are not using Metashape, Step 4 can run COLMAP routes directly. The standard COLMAP route expands 360° images into cubemap rigs while keeping normal images as normal cameras, so it is the better route for mixed sources. The COLMAP 4.1+ spherical route keeps same-resolution equirectangular 360° images as native `EQUIRECTANGULAR` cameras.
 
 ### 3. RealityScan to LichtFeld
 
@@ -51,8 +51,8 @@ For video or image sequences from DSLR, mirrorless, smartphone, or other normal 
 - With SAM3.1, add missed targets such as tripods or subtract false detections such as signs and logos from existing masks. This reduces the amount of manual mask painting needed after the first pass.
 - YOLO26-sem starts with `person` and `sky`; add vehicles, vegetation, or other Cityscapes classes only when the source material needs them.
 - Use the same mask-preparation workflow for normal-camera video after Step 1 extraction and for normal photo or image-sequence sets, not only 360° images. This is useful before sending images to SfM software.
-- In Step 4, choose how camera poses and sparse points will be prepared: use an existing SfM result, run COLMAP or SphereSfM from this app, or create RealityScan realignment data from a Metashape result.
-- In Step 5, convert Metashape, SphereSfM, RealityScan, or COLMAP results into NeRF-style JSON/PLY datasets, COLMAP-format datasets, LichtFeld-ready RealityScan conversions, or AprilTag scale-adjusted outputs.
+- In Step 4, choose how camera poses and sparse points will be prepared: use an existing SfM result, run COLMAP cubemap-rig or COLMAP 4.1+ spherical SfM from this app, or create RealityScan realignment data from a Metashape result.
+- In Step 5, convert Metashape, COLMAP spherical, RealityScan, or COLMAP results into NeRF-style JSON/PLY datasets, COLMAP-format datasets, LichtFeld-ready RealityScan conversions, or AprilTag scale-adjusted outputs.
 - Inspect SfM results and datasets in Scene Preview, with the point cloud, camera positions, selected camera image, and matching masks in one view. Open it from Step 4's viewer card.
 - If you print and place AprilTags before capture, Step 5 `Scale Adjustment` can estimate metric scale from an existing dataset. After reviewing the estimate, you can apply the same scale to the target dataset camera positions and point cloud.
 - Prepare the Windows environment with setup scripts that handle Python, FFmpeg/FFprobe, and the main Python packages. Normal use starts from `run_gui.bat`, and release updates run through `update.bat`.
@@ -127,8 +127,8 @@ If the scene folder path contains non-ASCII characters, an extremely long path, 
   -> Step 2: frame review and keep/drop decisions
   -> Step 3: mask generation
   -> Step 4: SfM
-      -> use an existing Metashape / RealityScan / COLMAP / SphereSfM result
-      -> run COLMAP or SphereSfM from this app
+      -> use an existing Metashape / RealityScan / COLMAP / COLMAP spherical result
+      -> run COLMAP cubemap-rig or COLMAP 4.1+ spherical SfM from this app
       -> create RealityScan realignment data from a Metashape result
   -> Step 5: dataset
       -> create JSON/PLY or COLMAP-format datasets for training apps
@@ -143,14 +143,13 @@ If the scene folder path contains non-ASCII characters, an extremely long path, 
 | 1. Frame Extraction | Extract video frames or register a still-image folder into the scene | Fixed interval + motion adjustment |
 | 2. Frame Review | Review extracted frames in single/thumbnail views and apply keep/drop decisions to CSV | Review low-quality candidates and unwanted frames |
 | 3. Mask Generation | Generate model-based masks plus optional stitch seam, overexposure, and custom masks | YOLO/SAM2.1, High quality |
-| 4. SfM | Choose how camera poses and sparse points are prepared | Existing SfM result / COLMAP / SphereSfM |
-| 5. Dataset | Create a training-app dataset from SfM results | Metashape / RealityScan / SphereSfM / COLMAP / Scale |
+| 4. SfM | Choose how camera poses and sparse points are prepared | Existing SfM result / COLMAP / COLMAP spherical |
+| 5. Dataset | Create a training-app dataset from SfM results | Metashape / RealityScan / COLMAP spherical / COLMAP / Scale |
 | 6. Training | Launch a compatible CLI for an external 3DGS application with an existing dataset | LichtFeld Studio / Postshot / Brush / gsplat |
 
 ## Related Tools
 
-- [COLMAP](https://github.com/colmap/colmap): SfM/MVS tool used by the COLMAP route and COLMAP-format dataset workflows.
-- [SphereSfM](https://github.com/json87/SphereSfM): COLMAP-based spherical-image SfM used by the SphereSfM route.
+- [COLMAP](https://github.com/colmap/colmap): SfM/MVS tool used by the COLMAP cubemap-rig route, COLMAP 4.1+ native `EQUIRECTANGULAR` spherical SfM route, and COLMAP-format dataset workflows.
 - [LichtFeld Studio](https://lichtfeld.io/): 3DGS training app supported by the LichtFeld dataset presets and Step 6 CLI launcher.
 - [Postshot](https://www.jawset.com/): 3DGS training app supported by Postshot dataset presets and Step 6 CLI launcher.
 - [Brush](https://github.com/ArthurBrussee/brush): open-source Gaussian Splatting trainer that can use the cubemap-style outputs.
@@ -173,8 +172,8 @@ The main output of this app is the 3DGS dataset created in Step 5. Open the Step
 | --- | --- |
 | Metashape + cubemap | `output/metashape_cubemap/` |
 | Metashape + ERP 360° / GUT | `output/metashape_3dgut/` |
-| SphereSfM + cubemap | `output/spheresfm_cubemap/` |
-| SphereSfM + ERP 360° / GUT | `output/spheresfm_3dgut/` |
+| COLMAP Spherical + cubemap | `output/colmap_equirect_cubemap/` |
+| COLMAP Spherical + ERP 360° / GUT | `output/colmap_equirect_3dgut/` |
 | COLMAP Rig | `output/colmap_rig/` |
 | Metashape + COLMAP | `output/metashape_colmap/` |
 | RealityScan + LichtFeld COLMAP | `output/realityscan/lfs_colmap/` |
@@ -227,14 +226,14 @@ Use this route when Metashape aligns the base 360° images well, but you want Re
 3. Confirm the [COLMAP](https://github.com/colmap/colmap) or GLOMAP executable, matcher, and mapper, then run it.
 4. After completion, pass `output/colmap_rig/` as a COLMAP dataset to COLMAP-compatible 3DGS tools. When no extra conversion is needed, you can skip Step 5 and continue to training.
 
-## SphereSfM Route
+## COLMAP 4.1 Spherical SfM Route
 
-1. Use Steps 1-3 in the same way as the Metashape route. For SphereSfM, use same-resolution equirectangular 360° images only.
-2. In Step 4, choose `Run SphereSfM` and select SphereSfM's `colmap.exe` from a [json87/SphereSfM](https://github.com/json87/SphereSfM) release or local build. Standard COLMAP cannot be used because it lacks the spherical-image SfM features.
-3. On RTX 50-series GPUs, the GitHub-distributed binary can stop during CUDA SIFT. For RTX 50-series systems, build SphereSfM locally with `CMAKE_CUDA_ARCHITECTURES=120` and select that `colmap.exe`.
+1. Use Steps 1-3 in the same way as the Metashape route. For COLMAP spherical SfM, use same-resolution equirectangular 360° images only.
+2. In Step 4, choose `Run COLMAP 4.1 Spherical SfM` and select an official COLMAP 4.1+ `colmap.exe`. This route uses COLMAP's native `EQUIRECTANGULAR` camera model, so no forked COLMAP build is required.
+3. On RTX 50-series GPUs, older CUDA builds can stop during GPU SIFT. If that happens, select a COLMAP build made with a CUDA architecture that supports the GPU.
 4. Start with `Matcher: Sequential` and `SfM Quality: Standard`.
-5. In Step 5, choose `SphereSfM -> NeRF Dataset (JSON/PLY)`, then choose PINHOLE cubemap output or ERP 360° data for LichtFeld.
-6. After completion, pass `output/spheresfm_3dgut/` or `output/spheresfm_cubemap/` to downstream apps. SphereSfM working files and logs stay under `output/spheresfm/`.
+5. In Step 5, choose `COLMAP Spherical -> NeRF Dataset (JSON/PLY)`, then choose PINHOLE cubemap output or ERP 360° data for LichtFeld.
+6. After completion, pass `output/colmap_equirect_3dgut/` or `output/colmap_equirect_cubemap/` to downstream apps. COLMAP spherical SfM working files stay under `output/colmap_equirect/`.
 
 ## Mask Preprocessing for Normal Images
 

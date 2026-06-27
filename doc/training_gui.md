@@ -42,7 +42,7 @@ When you open Step 6, first decide which app you want to run and which dataset y
 | Run Brush headlessly | `Brush` | `Dataset`, output PLY name, `Iterations`, `Max Resolution` |
 | Train COLMAP data with gsplat | `gsplat` | COLMAP-format `Dataset`, `simple_trainer.py`, `Strategy`, `Max Steps`, `3DGUT` |
 
-Normally, leave `Dataset` on the automatic value. The app uses the latest registered dataset artifact when one exists, such as a Metashape, RealityScan, SphereSfM, or COLMAP dataset under `<scene>/output/`. `Training Output` defaults to `<scene>/output/`. Keeping datasets and training results under `output/` makes the scene easier to move later.
+Normally, leave `Dataset` on the automatic value. The app uses the latest registered dataset artifact when one exists, such as a Metashape, RealityScan, COLMAP spherical, or COLMAP dataset under `<scene>/output/`. `Training Output` defaults to `<scene>/output/`. Keeping datasets and training results under `output/` makes the scene easier to move later.
 
 ## Basic Flow
 
@@ -93,8 +93,8 @@ This is the dataset folder passed to the training app. It is normally set from t
 | --- | --- |
 | Metashape + PINHOLE cubemap | `<scene>/output/metashape_cubemap/` |
 | Metashape + ERP 360° / GUT | `<scene>/output/metashape_3dgut/` |
-| SphereSfM + PINHOLE cubemap | `<scene>/output/spheresfm_cubemap/` |
-| SphereSfM + ERP 360° / GUT | `<scene>/output/spheresfm_3dgut/` |
+| COLMAP Spherical + PINHOLE cubemap | `<scene>/output/colmap_equirect_cubemap/` |
+| COLMAP Spherical + ERP 360° / GUT | `<scene>/output/colmap_equirect_3dgut/` |
 | COLMAP Rig | `<scene>/output/colmap_rig/` |
 | COLMAP RIG -> NeRF Dataset (JSON/PLY) | `<scene>/output/colmap_nerfstudio/` for Nerfstudio outside Step 6 |
 | RealityScan -> COLMAP Dataset | `<scene>/output/realityscan/lfs_colmap/` |
@@ -132,7 +132,7 @@ For CLI launch from Step 6, use a LichtFeld Studio v0.5.3-compatible CLI as the 
 
 ### Training Cubemap Data
 
-This is data created in Step 5 with image type `PINHOLE`. `Dataset` is normally `<scene>/output/metashape_cubemap/` for the Metashape route or `<scene>/output/spheresfm_cubemap/` for the SphereSfM route.
+This is data created in Step 5 with image type `PINHOLE`. `Dataset` is normally `<scene>/output/metashape_cubemap/` for the Metashape route or `<scene>/output/colmap_equirect_cubemap/` for the COLMAP spherical route.
 
 `Metashape -> COLMAP Dataset` and `RealityScan -> COLMAP Dataset` are also PINHOLE-style dataset routes for LichtFeld. For the RealityScan route, use `<scene>/output/realityscan/lfs_colmap/` with `GUT` off.
 
@@ -142,11 +142,11 @@ This is data created in Step 5 with image type `PINHOLE`. `Dataset` is normally 
 
 ### Training ERP 360° / GUT Data
 
-This is data created in Step 5 with image type `ERP 360°`. `Dataset` is normally `<scene>/output/metashape_3dgut/` for the Metashape route or `<scene>/output/spheresfm_3dgut/` for the SphereSfM route.
+This is data created in Step 5 with image type `ERP 360°`. `Dataset` is normally `<scene>/output/metashape_3dgut/` for the Metashape route or `<scene>/output/colmap_equirect_3dgut/` for the COLMAP spherical route.
 
 - Turn `GUT` on.
 - `pointcloud.ply` inside the selected dataset is required.
-- Create the ERP 360° / GUT dataset from the Metashape or SphereSfM route in Step 5 before launching Step 6.
+- Create the ERP 360° / GUT dataset from the Metashape or COLMAP spherical route in Step 5 before launching Step 6.
 
 ### Steps Scaler
 
@@ -180,7 +180,7 @@ For CLI launch from Step 6, use a Postshot v1.0/v1.1 Release Build CLI as the ba
 | Step 5 route | What Import passes |
 | --- | --- |
 | COLMAP | COLMAP sparse model |
-| SphereSfM | SphereSfM sparse model |
+| COLMAP Spherical | COLMAP sparse model with EQUIRECTANGULAR cameras |
 | Metashape | The selected profile's transforms JSON and point-cloud PLY, such as `transforms_postshot.json` and `pointcloud_postshot.ply` |
 
 If `Import` is selected and no camera poses are available, Step 6 stops before running. Either run SfM/conversion in Step 5 first, or switch to `Estimate` so Postshot estimates poses.
@@ -233,7 +233,7 @@ Step 6 does not create datasets. Whether you open the dataset manually or launch
 | Situation | What to do |
 | --- | --- |
 | `Dataset` has no images or camera data | Choose the matching card in Step 5 and create a dataset for the training app. |
-| You only have a SphereSfM SfM result, not a training dataset | Choose `SphereSfM -> NeRF Dataset (JSON/PLY)` in Step 5 and export PINHOLE or ERP 360° data. |
+| You only have a COLMAP spherical SfM result, not a training dataset | Choose `COLMAP Spherical -> NeRF Dataset (JSON/PLY)` in Step 5 and export PINHOLE or ERP 360° data. |
 | LichtFeld `GUT` is on but `pointcloud.ply` is missing | Create ERP 360° / GUT data in Step 5. |
 | Postshot `Camera Poses: Import` has no poses | Run SfM/conversion in Step 5, or switch to `Estimate`. |
 
@@ -254,5 +254,5 @@ Final quality depends on the Step 5 dataset shape, training-app settings, step c
 - For CLI runs, start with LichtFeld `GUT` off, or Postshot with `Camera Poses: Import`.
 - To test LichtFeld GUT, choose image type `ERP 360°` in Step 5, then turn on `GUT` in Step 6.
 - Use `Camera Poses: Estimate` only when you want Postshot to estimate poses.
-- COLMAP route data is PINHOLE cubemap data. Use the Metashape or SphereSfM route for ERP 360° / GUT comparisons.
+- COLMAP cubemap route data is PINHOLE data. Use the Metashape or COLMAP spherical route for ERP 360° / GUT comparisons.
 - To keep existing results, change the LichtFeld output PLY name, Postshot project name, or `Training Output`.

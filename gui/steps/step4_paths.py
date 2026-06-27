@@ -10,6 +10,7 @@ from PySide6.QtWidgets import QMessageBox
 
 from core.colmap_rig_export import pinhole_camera_params
 from core.scene_layout import (
+    COLMAP_EQUIRECT_PROJECT_DIR_NAME,
     scene_images_dir,
     scene_masks_dir,
     scene_metashape_3dgut_dir,
@@ -103,7 +104,7 @@ class Step4PathMixin:
         return self._colmap_rig_dir() / "sparse"
 
     def _spheresfm_project_dir(self) -> Path:
-        return self._output_dir() / "spheresfm"
+        return self._output_dir() / COLMAP_EQUIRECT_PROJECT_DIR_NAME
 
     def _spheresfm_masks_dir(self) -> Path:
         return self._spheresfm_project_dir() / "masks_colmap"
@@ -242,7 +243,7 @@ class Step4PathMixin:
         if source is None:
             raise ValueError(f"画像フォルダに対象画像がありません: {self._metashape_images_dir()}")
         width, height = source
-        return f"1,{width / 2:.12g},{height / 2:.12g}"
+        return f"{width:.12g},{height:.12g}"
 
     def _planned_colmap_image_size(self) -> tuple[int, int]:
         if not self._writes_images():
@@ -570,7 +571,7 @@ class Step4PathMixin:
         except OSError:
             resolved_project = project.absolute()
         if resolved_project.parent != output.resolve():
-            raise ValueError(f"SphereSfM出力フォルダが不正です: {project}")
+            raise ValueError(f"COLMAP球面SfM出力フォルダが不正です: {project}")
 
     @staticmethod
     def _path_has_contents(path: Path) -> bool:

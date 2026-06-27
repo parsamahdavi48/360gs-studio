@@ -319,12 +319,6 @@ class SfmStep(BaseStepWidget):
             placeholder="POS.txt",
         )
         self.spheresfm_pose_browse.setToolTip(i18n.tip("SPHERESFM_POSE_FILE"))
-        add_tooltip_row(
-            form,
-            i18n.t("SPHERESFM_POSE_FILE"),
-            self.spheresfm_pose_browse,
-            i18n.tip("SPHERESFM_POSE_FILE"),
-        )
 
         layout.addLayout(form)
         layout.addStretch()

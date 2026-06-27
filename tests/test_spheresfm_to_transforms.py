@@ -6,11 +6,15 @@ import numpy as np
 from core.spheresfm_to_transforms import convert, read_model
 
 
-def _write_sparse_text_model(path: Path) -> None:
+def _write_sparse_text_model(path: Path, camera_model: str = "SPHERE") -> None:
     path.mkdir(parents=True)
+    if camera_model == "EQUIRECTANGULAR":
+        camera_line = "1 EQUIRECTANGULAR 64 32 64 32\n"
+    else:
+        camera_line = "1 SPHERE 64 32 1 32 16\n"
     (path / "cameras.txt").write_text(
         "# CAMERA_ID, MODEL, WIDTH, HEIGHT, PARAMS[]\n"
-        "1 SPHERE 64 32 1 32 16\n",
+        + camera_line,
         encoding="utf-8",
     )
     (path / "images.txt").write_text(
@@ -41,13 +45,26 @@ def test_spheresfm_reader_understands_sphere_camera_text_model(tmp_path: Path) -
     assert points[10].rgb == (4, 5, 6)
 
 
+def test_spheresfm_reader_understands_equirectangular_camera_text_model(tmp_path: Path) -> None:
+    sparse = tmp_path / "sparse" / "0"
+    _write_sparse_text_model(sparse, camera_model="EQUIRECTANGULAR")
+
+    cameras, images, points, resolved = read_model(tmp_path / "sparse")
+
+    assert resolved == sparse
+    assert cameras[1].model == "EQUIRECTANGULAR"
+    assert cameras[1].params == (64.0, 32.0)
+    assert images[2].name == "nested/frame_0002.jpg"
+    assert points[10].xyz == (1.0, 2.0, 3.0)
+
+
 def test_spheresfm_convert_writes_equirect_transforms_and_pointcloud(tmp_path: Path) -> None:
     sparse = tmp_path / "sparse" / "0"
     images = tmp_path / "images"
     (images / "nested").mkdir(parents=True)
     (images / "frame_0001.jpg").write_bytes(b"jpg")
     (images / "nested" / "frame_0002.jpg").write_bytes(b"jpg")
-    _write_sparse_text_model(sparse)
+    _write_sparse_text_model(sparse, camera_model="EQUIRECTANGULAR")
 
     result = convert(
         tmp_path / "sparse",
@@ -62,6 +79,8 @@ def test_spheresfm_convert_writes_equirect_transforms_and_pointcloud(tmp_path: P
     assert data["camera_model"] == "EQUIRECTANGULAR"
     assert data["w"] == 64
     assert data["h"] == 32
+    assert "fl_x" not in data
+    assert data["source"]["camera_models"] == ["EQUIRECTANGULAR"]
     assert data["frames"][0]["file_path"] == "frame_0001.jpg"
     assert data["frames"][1]["file_path"] == "nested/frame_0002.jpg"
     assert np.array(data["frames"][0]["transform_matrix"]).tolist() == np.diag([1, -1, -1, 1]).tolist()
@@ -70,7 +89,7 @@ def test_spheresfm_convert_writes_equirect_transforms_and_pointcloud(tmp_path: P
 
 
 def test_spheresfm_convert_can_write_paths_relative_to_output(tmp_path: Path) -> None:
-    sparse = tmp_path / "scene" / "output" / "spheresfm" / "sparse" / "0"
+    sparse = tmp_path / "scene" / "output" / "colmap_equirect" / "sparse" / "0"
     images = tmp_path / "scene" / "images"
     images.mkdir(parents=True)
     (images / "frame_0001.jpg").write_bytes(b"jpg")
@@ -78,13 +97,13 @@ def test_spheresfm_convert_can_write_paths_relative_to_output(tmp_path: Path) ->
 
     convert(
         sparse,
-        tmp_path / "scene" / "output" / "spheresfm" / "3dgut",
+        tmp_path / "scene" / "output" / "colmap_equirect" / "3dgut",
         images,
         image_path_mode="relative-to-output",
     )
 
     data = json.loads(
-        (tmp_path / "scene" / "output" / "spheresfm" / "3dgut" / "transforms.json").read_text(
+        (tmp_path / "scene" / "output" / "colmap_equirect" / "3dgut" / "transforms.json").read_text(
             encoding="utf-8"
         )
     )

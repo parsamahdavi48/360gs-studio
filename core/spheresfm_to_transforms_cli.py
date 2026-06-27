@@ -1,4 +1,4 @@
-"""CLI adapter for SphereSfM sparse model to transforms.json conversion."""
+"""CLI adapter for spherical COLMAP sparse model to transforms.json conversion."""
 
 from __future__ import annotations
 
@@ -12,9 +12,9 @@ from core.spheresfm_to_transforms import convert
 
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Convert a SphereSfM sparse model to equirectangular transforms.json.",
+        description="Convert a COLMAP spherical sparse model to equirectangular transforms.json.",
     )
-    parser.add_argument("model_dir", help="SphereSfM sparse model directory, or sparse root containing 0/")
+    parser.add_argument("model_dir", help="Spherical COLMAP sparse model directory, or sparse root containing 0/")
     parser.add_argument("output_dir", help="Output directory for transforms.json and pointcloud.ply")
     parser.add_argument("--images-dir", required=True, help="Source equirectangular images directory")
     parser.add_argument(

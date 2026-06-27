@@ -2,7 +2,7 @@
 
 Step 3 creates `masks/` from the `images/` kept in Step 2. These masks exclude regions you do not want SfM or 3DGS to use, such as people, the camera operator, tripods, hands, vehicles, sky, stitch seams, and blown-out highlights.
 
-Mask polarity is **white = use, black = exclude**. Creating masks before Metashape, COLMAP, SphereSfM, or another SfM route helps avoid unwanted features from people, sky, or other unstable regions.
+Mask polarity is **white = use, black = exclude**. Creating masks before Metashape, COLMAP, COLMAP spherical SfM, or another SfM route helps avoid unwanted features from people, sky, or other unstable regions.
 
 ## First Choice
 
@@ -124,7 +124,7 @@ It is usually faster to generate the full set at Standard/High quality, then reg
 | Temporary preview | Visual check only; not a saved mask |
 | Run log | Shown in the integrated log panel |
 
-Generated `masks/` can be imported into Metashape, COLMAP, or SphereSfM, and Step 5 converts them to match training images when creating datasets. Polarity remains white = use, black = exclude.
+Generated `masks/` can be imported into Metashape, COLMAP, or COLMAP spherical SfM, and Step 5 converts them to match training images when creating datasets. Polarity remains white = use, black = exclude.
 
 ## Common Decisions
 

@@ -67,7 +67,7 @@ _SPECS: tuple[SfmRouteSpec, ...] = (
         runs_sfm_in_app=True,
         supports_projected_output=True,
         supports_3dgut_output=True,
-        official_url="https://github.com/json87/SphereSfM",
+        official_url="https://github.com/colmap/colmap",
         official_link_key="SPHERESFM_REPOSITORY_LINK",
     ),
 )

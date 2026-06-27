@@ -2,7 +2,7 @@
 
 Step 2 is where you review images extracted or registered in Step 1 and keep only the images that should continue to Step 3 mask generation and downstream SfM. It shows labels such as `Added`, `Drop`, and `Review` from Step 1 analysis, plus `External` for images registered through scene import, and lets you manually change keep/drop decisions.
 
-When you press `Apply`, Step 2 removes dropped frames from `images/`. Kept filenames are preserved by default; before masks or Step 5 dataset outputs exist, you can also enable `Renumber kept images` to rename the kept files into a clean sequence. The resulting `images/` folder becomes the input for Step 3 and for Metashape, COLMAP, SphereSfM, or another SfM route.
+When you press `Apply`, Step 2 removes dropped frames from `images/`. Kept filenames are preserved by default; before masks or Step 5 dataset outputs exist, you can also enable `Renumber kept images` to rename the kept files into a clean sequence. The resulting `images/` folder becomes the input for Step 3 and for Metashape, COLMAP, COLMAP spherical SfM, or another SfM route.
 
 ## First Things To Check
 

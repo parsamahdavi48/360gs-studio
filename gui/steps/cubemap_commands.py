@@ -73,7 +73,6 @@ class SphereSfmCommand:
     use_masks: bool
     matcher: str
     quality_preset: str
-    pose_path: str = ""
 
 
 def build_metashape_nerf_cmd(options: MetashapeNerfCommand) -> AppJob:
@@ -255,9 +254,9 @@ def _spheresfm_feature_options(preset: str) -> list[str]:
         max_image_size = "4096"
         max_num_features = "16384"
     return [
-        "--SiftExtraction.use_gpu",
+        "--FeatureExtraction.use_gpu",
         "1",
-        "--SiftExtraction.max_image_size",
+        "--FeatureExtraction.max_image_size",
         max_image_size,
         "--SiftExtraction.max_num_features",
         max_num_features,
@@ -267,15 +266,15 @@ def _spheresfm_feature_options(preset: str) -> list[str]:
 def _spheresfm_matching_options(preset: str) -> list[str]:
     max_num_matches = "16384" if preset == "fast" else "32768"
     options = [
-        "--SiftMatching.max_error",
+        "--TwoViewGeometry.max_error",
         "4",
-        "--SiftMatching.min_num_inliers",
+        "--TwoViewGeometry.min_num_inliers",
         "50",
-        "--SiftMatching.max_num_matches",
+        "--FeatureMatching.max_num_matches",
         max_num_matches,
     ]
     if preset in {"quality", "robust"}:
-        options.extend(["--SiftMatching.guided_matching", "1"])
+        options.extend(["--FeatureMatching.guided_matching", "1"])
     return options
 
 
@@ -295,8 +294,6 @@ def _spheresfm_mapper_options(preset: str) -> list[str]:
         "0",
         "--Mapper.ba_refine_extra_params",
         "0",
-        "--Mapper.sphere_camera",
-        "1",
         "--Mapper.multiple_models",
         "0",
     ]
@@ -369,7 +366,7 @@ def build_spheresfm_commands(options: SphereSfmCommand) -> ExternalCommandQueue:
         "--image_path",
         str(options.images_dir),
         "--ImageReader.camera_model",
-        "SPHERE",
+        "EQUIRECTANGULAR",
         "--ImageReader.camera_params",
         options.camera_params,
         "--ImageReader.single_camera",
@@ -377,8 +374,6 @@ def build_spheresfm_commands(options: SphereSfmCommand) -> ExternalCommandQueue:
     ]
     if options.use_masks:
         feature_cmd.extend(["--ImageReader.mask_path", str(options.prepared_masks_dir)])
-    if options.pose_path:
-        feature_cmd.extend(["--ImageReader.pose_path", options.pose_path])
     feature_cmd.extend(_spheresfm_feature_options(options.quality_preset))
 
     if options.matcher == "spatial":
@@ -387,8 +382,6 @@ def build_spheresfm_commands(options: SphereSfmCommand) -> ExternalCommandQueue:
             "spatial_matcher",
             "--database_path",
             str(options.database),
-            "--SpatialMatching.is_gps",
-            "0",
             "--SpatialMatching.max_distance",
             "50",
         ]

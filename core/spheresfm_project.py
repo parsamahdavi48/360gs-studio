@@ -1,7 +1,8 @@
-"""Prepare a scene folder for SphereSfM execution."""
+"""Prepare a scene folder for COLMAP spherical SfM execution."""
 
 from __future__ import annotations
 
+import re
 import shutil
 import subprocess
 import sys
@@ -13,14 +14,24 @@ IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".tif", ".tiff", ".webp", ".bmp"}
 
 
 def iter_images(images_dir: Path) -> list[Path]:
-    # SphereSfM project preparation intentionally scans the prepared image root:
+    # Spherical SfM project preparation intentionally scans the prepared image root:
     # GUI preflight already constrains this route to same-resolution ERP input.
     return sorted(p for p in images_dir.rglob("*") if p.is_file() and p.suffix.lower() in IMAGE_EXTS)
 
 
+def _parse_colmap_version(output: str) -> tuple[int, int, int] | None:
+    match = re.search(r"\bCOLMAP\s+(\d+)\.(\d+)(?:\.(\d+))?", output)
+    if match is None:
+        return None
+    major = int(match.group(1))
+    minor = int(match.group(2))
+    patch = int(match.group(3) or 0)
+    return major, minor, patch
+
+
 def validate_spheresfm_colmap(colmap: str) -> None:
     candidates = [
-        [colmap, "help"],
+        [colmap, "version"],
         [colmap, "-h"],
     ]
     last_error = ""
@@ -39,13 +50,14 @@ def validate_spheresfm_colmap(colmap: str) -> None:
             last_error = str(exc)
             continue
         output = f"{result.stdout}\n{result.stderr}"
-        if result.returncode == 0 and "sphere_cubic_reprojecer" in output:
-            print("SphereSfM executable verified.", flush=True)
+        version = _parse_colmap_version(output)
+        if result.returncode == 0 and version is not None and version >= (4, 1, 0):
+            print("COLMAP 4.1+ spherical SfM executable verified.", flush=True)
             return
         last_error = output.strip()[-1200:]
     raise RuntimeError(
-        "The selected executable does not look like SphereSfM's COLMAP build. "
-        "Expected command list to contain sphere_cubic_reprojecer."
+        "The selected executable must be COLMAP 4.1.0 or newer with native EQUIRECTANGULAR camera support. "
+        "Run `colmap version` and select a COLMAP 4.1+ executable."
         + (f"\nLast output:\n{last_error}" if last_error else "")
     )
 

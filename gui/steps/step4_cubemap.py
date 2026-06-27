@@ -366,12 +366,6 @@ class CubemapStep(
             placeholder="POS.txt",
         )
         self.spheresfm_pose_browse.setToolTip(i18n.tip("SPHERESFM_POSE_FILE"))
-        add_tooltip_row(
-            spheresfm_form,
-            i18n.t("SPHERESFM_POSE_FILE"),
-            self.spheresfm_pose_browse,
-            i18n.tip("SPHERESFM_POSE_FILE"),
-        )
 
         spheresfm_layout.addLayout(spheresfm_form)
         spheresfm_layout.addStretch()
@@ -1067,7 +1061,7 @@ class CubemapStep(
         if not self._is_spheresfm_method():
             return None
         try:
-            return step4_meta_dir(Path(self.scene_dir)) / "logs" / "spheresfm"
+            return step4_meta_dir(Path(self.scene_dir)) / "logs" / "colmap_equirect"
         except ValueError:
             return None
 

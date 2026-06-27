@@ -1,6 +1,6 @@
 # Step 1 Frame Extraction GUI
 
-Step 1 turns 360° video, normal video, or an existing still-image folder into scene images for SfM and 3DGS. The `images/` folder and `_stechdrive/frames/selected_frames.csv` created here become the input for Step 2 review, Step 3 mask generation, and downstream SfM in Metashape, COLMAP, SphereSfM, or another tool.
+Step 1 turns 360° video, normal video, or an existing still-image folder into scene images for SfM and 3DGS. The `images/` folder and `_stechdrive/frames/selected_frames.csv` created here become the input for Step 2 review, Step 3 mask generation, and downstream SfM in Metashape, COLMAP, COLMAP spherical SfM, or another tool.
 
 Choose a scene folder, then add videos or still-image folders to `Input Sources` on the right. Videos are extracted at the specified interval. Still-image folders are copied into the scene `images/` folder and registered. `Motion` is on by default; it reduces redundant near-duplicate candidates and adds candidates where viewpoint change is useful. Turn `Motion` off when you want faster extraction.
 

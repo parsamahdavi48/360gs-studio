@@ -155,13 +155,13 @@ _EXPORT_SETTINGS_NAME = STEP4_EXPORT_SETTINGS_JSON
 _COLMAP_PROJECT_MANIFEST_NAME = "stechdrive_colmap_project.json"
 _SPHERESFM_PROJECT_MANIFEST_NAME = "stechdrive_spheresfm_project.json"
 _COLMAP_REPOSITORY_URL = "https://github.com/colmap/colmap"
-_SPHERESFM_REPOSITORY_URL = "https://github.com/json87/SphereSfM"
+_SPHERESFM_REPOSITORY_URL = "https://github.com/colmap/colmap"
 _USER_SETTINGS_SECTION = "step4_colmap"
 _LICHTFELD_FINAL_CORRECTION = LICHTFELD_FINAL_ORIENTATION_MATRIX
 
 
 def is_spheresfm_rtx50_cuda_error_line(line: str) -> bool:
-    """Detect CUDA binary/device-architecture failures seen with non_sm_120 SphereSfM builds."""
+    """Detect CUDA binary/device-architecture failures seen with incompatible COLMAP builds."""
     lowered = line.lower()
     if any(marker in lowered for marker in _SPHERESFM_CUDA_ARCH_ERROR_MARKERS):
         return True

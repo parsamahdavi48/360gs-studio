@@ -73,13 +73,14 @@ Validated and intended use:
 Not intended as:
 
 - a general COLMAP sparse model viewer
-- a general SphereSfM result viewer
+- a general COLMAP spherical SfM result viewer
 - a replacement for the normal application GUI
 - a production UI for end users
 
-COLMAP and SphereSfM raw sparse outputs need an adapter before this viewer can
-load them. SphereSfM Cube6 projection output can be tested when it produces
-compatible `PINHOLE`/`SIMPLE_PINHOLE` `transforms.json` and image files.
+COLMAP raw sparse outputs, including native `EQUIRECTANGULAR` spherical sparse
+models, need an adapter before this viewer can load them. Projected cubemap
+output can be tested when it produces compatible `PINHOLE`/`SIMPLE_PINHOLE`
+`transforms.json` and image files.
 
 ## Output
 

@@ -176,11 +176,10 @@ def test_spheresfm_builder_uses_spherical_camera_and_mask_path(tmp_path: Path) -
             prepared_masks_dir=prepared_masks,
             database=tmp_path / "project" / "database.db",
             sparse=sparse,
-            camera_params="1,32,16",
+            camera_params="64,32",
             use_masks=True,
             matcher="spatial",
             quality_preset="quality",
-            pose_path=str(tmp_path / "POS.txt"),
         )
     )
 
@@ -192,13 +191,14 @@ def test_spheresfm_builder_uses_spherical_camera_and_mask_path(tmp_path: Path) -
     ]
     feature_cmd = commands[1][1]
     assert feature_cmd[0:2] == ["spheresfm_colmap.exe", "feature_extractor"]
-    assert feature_cmd[feature_cmd.index("--ImageReader.camera_model") + 1] == "SPHERE"
-    assert feature_cmd[feature_cmd.index("--ImageReader.camera_params") + 1] == "1,32,16"
+    assert feature_cmd[feature_cmd.index("--ImageReader.camera_model") + 1] == "EQUIRECTANGULAR"
+    assert feature_cmd[feature_cmd.index("--ImageReader.camera_params") + 1] == "64,32"
     assert feature_cmd[feature_cmd.index("--ImageReader.mask_path") + 1] == str(prepared_masks)
+    assert feature_cmd[feature_cmd.index("--FeatureExtraction.max_image_size") + 1] == "5000"
     assert feature_cmd[feature_cmd.index("--SiftExtraction.max_num_features") + 1] == "32768"
-    assert commands[2][1][commands[2][1].index("--SiftMatching.guided_matching") + 1] == "1"
+    assert commands[2][1][commands[2][1].index("--FeatureMatching.guided_matching") + 1] == "1"
     assert commands[2][1][1] == "spatial_matcher"
-    assert commands[3][1][commands[3][1].index("--Mapper.sphere_camera") + 1] == "1"
+    assert "--Mapper.sphere_camera" not in commands[3][1]
     assert commands[3][1][commands[3][1].index("--Mapper.multiple_models") + 1] == "0"
     assert commands[3][1][commands[3][1].index("--Mapper.ba_global_max_num_iterations") + 1] == "75"
     assert sparse.is_dir()
@@ -207,7 +207,7 @@ def test_spheresfm_builder_uses_spherical_camera_and_mask_path(tmp_path: Path) -
 def test_prepare_spheresfm_masks_converts_to_colmap_extension_names(tmp_path: Path) -> None:
     images = tmp_path / "images"
     source_masks = tmp_path / "masks"
-    output_masks = tmp_path / "spheresfm" / "masks_colmap"
+    output_masks = tmp_path / "colmap_equirect" / "masks_colmap"
     (images / "sub").mkdir(parents=True)
     (source_masks / "sub").mkdir(parents=True)
     (images / "frame_0001.jpg").write_bytes(b"jpg")

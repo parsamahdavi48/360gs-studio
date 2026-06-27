@@ -61,7 +61,6 @@ from gui.steps.step4_contracts import (
     _PIPELINE_STAGE_SFM,
     _PROFILE_LICHTFELD,
     _PROFILE_REALITYSCAN,
-    _SPHERESFM_MATCHER_SPATIAL,
 )
 from gui.steps.workflow_job_commands import build_workflow_job_cmd
 
@@ -710,11 +709,6 @@ class Step4CommandPlanMixin:
 
     def _build_spheresfm_sfm_commands(self) -> StepCommandQueue:
         matcher = self.spheresfm_matcher_combo.currentData() or _COLMAP_MATCHER_SEQUENTIAL
-        pose_path = self.spheresfm_pose_browse.text().strip()
-        if matcher == _SPHERESFM_MATCHER_SPATIAL and not pose_path:
-            raise ValueError(i18n.t("SPHERESFM_POSE_REQUIRED"))
-        if pose_path and not Path(pose_path).is_file():
-            raise ValueError(i18n.t("SPHERESFM_POSE_NOT_FOUND").format(path=pose_path))
 
         colmap = self._resolve_spheresfm_executable()
         scene = Path(self.scene_dir)
@@ -750,7 +744,6 @@ class Step4CommandPlanMixin:
                 use_masks=self._spheresfm_uses_masks(),
                 matcher=matcher,
                 quality_preset=self._spheresfm_quality_preset(),
-                pose_path=pose_path,
             )
         )
         return [

@@ -31,7 +31,7 @@ def test_preflight_copies_one_image_and_runs_gpu_sift(
     (images_dir / "frame_0001.jpg").write_bytes(b"image-one")
     (images_dir / "frame_0002.jpg").write_bytes(b"image-two")
 
-    work_dir = tmp_path / "output" / "spheresfm" / "preflight"
+    work_dir = tmp_path / "output" / "colmap_equirect" / "preflight"
     stale_dir = work_dir / "images"
     stale_dir.mkdir(parents=True)
     (stale_dir / "old.jpg").write_bytes(b"old")
@@ -55,7 +55,7 @@ def test_preflight_copies_one_image_and_runs_gpu_sift(
             "--work-dir",
             str(work_dir),
             "--camera-params",
-            "1,32,16",
+            "64,32",
         ]
     ) == 0
 
@@ -68,13 +68,13 @@ def test_preflight_copies_one_image_and_runs_gpu_sift(
     assert calls[0][calls[0].index("--database_path") + 1] == str(work_dir / "database.db")
     assert calls[1][0:2] == ["spheresfm_colmap.exe", "feature_extractor"]
     assert calls[1][calls[1].index("--image_path") + 1] == str(work_dir / "images")
-    assert calls[1][calls[1].index("--ImageReader.camera_model") + 1] == "SPHERE"
-    assert calls[1][calls[1].index("--ImageReader.camera_params") + 1] == "1,32,16"
-    assert calls[1][calls[1].index("--SiftExtraction.use_gpu") + 1] == "1"
-    assert calls[1][calls[1].index("--SiftExtraction.max_image_size") + 1] == "1024"
+    assert calls[1][calls[1].index("--ImageReader.camera_model") + 1] == "EQUIRECTANGULAR"
+    assert calls[1][calls[1].index("--ImageReader.camera_params") + 1] == "64,32"
+    assert calls[1][calls[1].index("--FeatureExtraction.use_gpu") + 1] == "1"
+    assert calls[1][calls[1].index("--FeatureExtraction.max_image_size") + 1] == "1024"
 
     captured = capsys.readouterr()
-    assert "SphereSfM GPU preflight passed." in captured.out
+    assert "COLMAP spherical GPU preflight passed." in captured.out
 
 
 def test_preflight_rejects_unscoped_work_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -93,6 +93,6 @@ def test_preflight_rejects_unscoped_work_dir(tmp_path: Path, monkeypatch: pytest
                 "--work-dir",
                 str(tmp_path / "scratch"),
                 "--camera-params",
-                "1,32,16",
+                "64,32",
             ]
         )

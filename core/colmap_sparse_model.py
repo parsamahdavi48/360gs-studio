@@ -31,6 +31,7 @@ CAMERA_MODELS = [
     CameraModel(9, "RADIAL_FISHEYE", 5),
     CameraModel(10, "THIN_PRISM_FISHEYE", 12),
     CameraModel(11, "SPHERE", 3),
+    CameraModel(17, "EQUIRECTANGULAR", 2),
 ]
 CAMERA_MODEL_IDS = {model.model_id: model for model in CAMERA_MODELS}
 CAMERA_MODEL_NAMES = {model.name: model for model in CAMERA_MODELS}

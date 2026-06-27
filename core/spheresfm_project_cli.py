@@ -1,4 +1,4 @@
-"""CLI adapter for SphereSfM project preparation."""
+"""CLI adapter for COLMAP spherical SfM project preparation."""
 
 from __future__ import annotations
 
@@ -11,8 +11,8 @@ from core.spheresfm_project import iter_images, prepare_masks, validate_spheresf
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Prepare masks and validate a SphereSfM COLMAP executable.")
-    parser.add_argument("--colmap", required=True, help="SphereSfM colmap executable")
+    parser = argparse.ArgumentParser(description="Prepare masks and validate a COLMAP 4.1+ executable.")
+    parser.add_argument("--colmap", required=True, help="COLMAP 4.1+ executable")
     parser.add_argument("--images-dir", required=True, type=Path)
     parser.add_argument("--source-masks-dir", type=Path)
     parser.add_argument("--output-masks-dir", type=Path)
@@ -37,9 +37,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.output_masks_dir is None:
             raise ValueError("--output-masks-dir is required with --use-masks")
         copied, missing = prepare_masks(images_dir, args.source_masks_dir, args.output_masks_dir)
-        print(f"Prepared SphereSfM masks: copied={copied}, missing={missing}", flush=True)
+        print(f"Prepared COLMAP spherical masks: copied={copied}, missing={missing}", flush=True)
     else:
-        print("SphereSfM masks disabled.", flush=True)
+        print("COLMAP spherical masks disabled.", flush=True)
     return 0
 
 

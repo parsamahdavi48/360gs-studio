@@ -41,8 +41,9 @@ SCENE_MASKS_DIR_NAME = "masks"
 SCENE_OUTPUT_DIR_NAME = "output"
 METASHAPE_CUBEMAP_OUTPUT_DIR_NAME = "metashape_cubemap"
 METASHAPE_3DGUT_OUTPUT_DIR_NAME = "metashape_3dgut"
-SPHERESFM_CUBEMAP_OUTPUT_DIR_NAME = "spheresfm_cubemap"
-SPHERESFM_3DGUT_OUTPUT_DIR_NAME = "spheresfm_3dgut"
+COLMAP_EQUIRECT_PROJECT_DIR_NAME = "colmap_equirect"
+SPHERESFM_CUBEMAP_OUTPUT_DIR_NAME = "colmap_equirect_cubemap"
+SPHERESFM_3DGUT_OUTPUT_DIR_NAME = "colmap_equirect_3dgut"
 
 
 def app_dir(scene_dir: Path) -> Path:

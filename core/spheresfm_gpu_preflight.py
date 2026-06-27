@@ -1,4 +1,4 @@
-"""Run a tiny isolated GPU SIFT preflight for SphereSfM."""
+"""Run a tiny isolated GPU SIFT preflight for COLMAP spherical SfM."""
 
 from __future__ import annotations
 
@@ -67,14 +67,14 @@ def build_feature_command(colmap: str, database: Path, images_dir: Path, camera_
         "--image_path",
         str(images_dir),
         "--ImageReader.camera_model",
-        "SPHERE",
+        "EQUIRECTANGULAR",
         "--ImageReader.camera_params",
         camera_params,
         "--ImageReader.single_camera",
         "1",
-        "--SiftExtraction.use_gpu",
+        "--FeatureExtraction.use_gpu",
         "1",
-        "--SiftExtraction.max_image_size",
+        "--FeatureExtraction.max_image_size",
         PREFLIGHT_MAX_IMAGE_SIZE,
         "--SiftExtraction.max_num_features",
         PREFLIGHT_MAX_NUM_FEATURES,

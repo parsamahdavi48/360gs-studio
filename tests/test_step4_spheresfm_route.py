@@ -121,8 +121,8 @@ def test_spheresfm_method_can_queue_3dgut_export_without_projection_views(tmp_pa
     step._set_combo_data(step.spheresfm_output_shape_combo, "equirect_3dgut")
     step.spheresfm_exec_browse.set_text(str(fake_colmap))
 
-    assert step.sfm_path_summary_value.full_text() == "output/spheresfm/"
-    assert step.cubemap_path_summary_value.full_text() == "output/spheresfm_3dgut/"
+    assert step.sfm_path_summary_value.full_text() == "output/colmap_equirect/"
+    assert step.cubemap_path_summary_value.full_text() == "output/colmap_equirect_3dgut/"
     assert not step.export_targets_row.isEnabled()
     assert not step.view_config.settings_widget.isEnabled()
 
@@ -142,25 +142,25 @@ def test_spheresfm_method_can_queue_3dgut_export_without_projection_views(tmp_pa
     transforms_job = _workflow_job(commands[6][1])
     assert preflight_job["colmap"] == str(fake_colmap)
     assert prepare_job["use_masks"] is True
-    assert commands[3][1][commands[3][1].index("--ImageReader.camera_model") + 1] == "SPHERE"
-    assert commands[3][1][commands[3][1].index("--ImageReader.camera_params") + 1] == "1,32,16"
+    assert commands[3][1][commands[3][1].index("--ImageReader.camera_model") + 1] == "EQUIRECTANGULAR"
+    assert commands[3][1][commands[3][1].index("--ImageReader.camera_params") + 1] == "64,32"
     assert commands[3][1][commands[3][1].index("--ImageReader.mask_path") + 1] == str(
-        tmp_path / "output" / "spheresfm" / "masks_colmap"
+        tmp_path / "output" / "colmap_equirect" / "masks_colmap"
     )
     assert commands[4][1][commands[4][1].index("--SequentialMatching.overlap") + 1] == "10"
-    assert commands[5][1][commands[5][1].index("--Mapper.sphere_camera") + 1] == "1"
+    assert "--Mapper.sphere_camera" not in commands[5][1]
     assert commands[5][1][commands[5][1].index("--Mapper.multiple_models") + 1] == "0"
     assert commands[5][1][commands[5][1].index("--Mapper.ba_global_max_num_iterations") + 1] == "33"
-    assert transforms_job["sparse_dir"] == str(tmp_path / "output" / "spheresfm" / "sparse")
-    assert transforms_job["output_dir"] == str(tmp_path / "output" / "spheresfm_3dgut")
+    assert transforms_job["sparse_dir"] == str(tmp_path / "output" / "colmap_equirect" / "sparse")
+    assert transforms_job["output_dir"] == str(tmp_path / "output" / "colmap_equirect_3dgut")
     assert transforms_job["image_path_mode"] == "images-prefix"
     assert os.path.samefile(
         images / "frame_0001.jpg",
-        tmp_path / "output" / "spheresfm_3dgut" / "images" / "frame_0001.jpg",
+        tmp_path / "output" / "colmap_equirect_3dgut" / "images" / "frame_0001.jpg",
     )
     assert os.path.samefile(
         masks / "frame_0001.png",
-        tmp_path / "output" / "spheresfm_3dgut" / "masks" / "frame_0001.png",
+        tmp_path / "output" / "colmap_equirect_3dgut" / "masks" / "frame_0001.png",
     )
 
 
@@ -180,8 +180,8 @@ def test_spheresfm_method_can_queue_projected_cubemap_export(tmp_path: Path) -> 
     step._set_export_method("spheresfm")
     step.spheresfm_exec_browse.set_text(str(fake_colmap))
 
-    assert step.sfm_path_summary_value.full_text() == "output/spheresfm/"
-    assert step.cubemap_path_summary_value.full_text() == "output/spheresfm_cubemap/"
+    assert step.sfm_path_summary_value.full_text() == "output/colmap_equirect/"
+    assert step.cubemap_path_summary_value.full_text() == "output/colmap_equirect_cubemap/"
     assert step.export_targets_row.isEnabled()
     assert step.view_config.settings_widget.isEnabled()
 
@@ -201,10 +201,10 @@ def test_spheresfm_method_can_queue_projected_cubemap_export(tmp_path: Path) -> 
     cubemap_cmd = commands[7][1]
     transform_job = _workflow_job(transform_cmd)
     cubemap_job = _workflow_job(cubemap_cmd)
-    assert transform_job["output_dir"] == str(tmp_path / "output" / "spheresfm" / "equirect")
+    assert transform_job["output_dir"] == str(tmp_path / "output" / "colmap_equirect" / "equirect")
     assert transform_job["image_path_mode"] == "relative"
-    assert cubemap_job["input_dir"] == str(tmp_path / "output" / "spheresfm" / "equirect")
-    assert cubemap_job["output_dir"] == str(tmp_path / "output" / "spheresfm_cubemap")
+    assert cubemap_job["input_dir"] == str(tmp_path / "output" / "colmap_equirect" / "equirect")
+    assert cubemap_job["output_dir"] == str(tmp_path / "output" / "colmap_equirect_cubemap")
     assert step4_views_config_path(tmp_path).is_file()
     assert cubemap_job["image_dir"] == str(images)
     assert cubemap_job["mask_dir"] == str(masks)
@@ -275,7 +275,7 @@ def test_spheresfm_convert_only_queues_3dgut_without_colmap_binary(tmp_path: Pat
     assert [phase for phase, _cmd in commands] == ["spheresfm_transforms"]
     job = _workflow_job(commands[0][1])
     assert job["sparse_dir"] == str(sparse_model)
-    assert job["output_dir"] == str(tmp_path / "output" / "spheresfm_3dgut")
+    assert job["output_dir"] == str(tmp_path / "output" / "colmap_equirect_3dgut")
     assert job["image_path_mode"] == "images-prefix"
     assert sparse_model.is_dir()
 
@@ -364,7 +364,7 @@ def test_spheresfm_3dgut_convert_only_confirms_output_dataset_targets(tmp_path: 
     _write_test_image(images / "frame_0001.jpg")
     _write_test_image(masks / "frame_0001.png")
     sparse_model = _write_spheresfm_sparse_stub(tmp_path)
-    gut_output = tmp_path / "output" / "spheresfm_3dgut"
+    gut_output = tmp_path / "output" / "colmap_equirect_3dgut"
     transforms = gut_output / "transforms.json"
     pointcloud = gut_output / "pointcloud.ply"
     old_linked_image = gut_output / "images" / "old.jpg"
@@ -403,12 +403,12 @@ def test_spheresfm_convert_only_resets_conversion_outputs_only(tmp_path: Path, m
     images.mkdir()
     _write_test_image(images / "frame_0001.jpg")
     sparse_model = _write_spheresfm_sparse_stub(tmp_path)
-    database = tmp_path / "output" / "spheresfm" / "database.db"
+    database = tmp_path / "output" / "colmap_equirect" / "database.db"
     database.write_text("db", encoding="utf-8")
-    old_equirect = tmp_path / "output" / "spheresfm" / "equirect" / "old.txt"
+    old_equirect = tmp_path / "output" / "colmap_equirect" / "equirect" / "old.txt"
     old_views = step4_views_config_path(tmp_path)
-    old_images = tmp_path / "output" / "spheresfm_cubemap" / "images" / "old.jpg"
-    old_masks = tmp_path / "output" / "spheresfm_cubemap" / "masks" / "old.png"
+    old_images = tmp_path / "output" / "colmap_equirect_cubemap" / "images" / "old.jpg"
+    old_masks = tmp_path / "output" / "colmap_equirect_cubemap" / "masks" / "old.png"
     old_equirect.parent.mkdir(parents=True)
     old_views.parent.mkdir(parents=True)
     old_images.parent.mkdir(parents=True)

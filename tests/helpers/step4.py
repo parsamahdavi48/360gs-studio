@@ -184,7 +184,7 @@ def _write_output_dataset(
 
 
 def _write_spheresfm_sparse_stub(scene: Path) -> Path:
-    sparse_model = scene / "output" / "spheresfm" / "sparse" / "0"
+    sparse_model = scene / "output" / "colmap_equirect" / "sparse" / "0"
     sparse_model.mkdir(parents=True, exist_ok=True)
     (sparse_model / "cameras.txt").write_text("# cameras\n", encoding="ascii")
     (sparse_model / "images.txt").write_text("# images\n", encoding="ascii")

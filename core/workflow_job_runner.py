@@ -400,21 +400,21 @@ def _run_spheresfm_preflight(job: dict, *, cancel_event: CancellationToken | Non
     source = images[0]
     target = preflight_images / f"preflight_000001{source.suffix.lower()}"
     shutil.copy2(source, target)
-    print(f"SphereSfM GPU preflight image: {source}", flush=True)
+    print(f"COLMAP spherical GPU preflight image: {source}", flush=True)
 
     raise_if_cancelled(cancel_event)
     database = work_dir / "database.db"
     run_spheresfm_preflight_colmap_command(
         [colmap, "database_creator", "--database_path", str(database)],
-        "SphereSfM preflight database_creator",
+        "COLMAP spherical preflight database_creator",
         cancel_event=cancel_event,
     )
     run_spheresfm_preflight_colmap_command(
         build_spheresfm_preflight_feature_command(colmap, database, preflight_images, str(job["camera_params"])),
-        "SphereSfM preflight feature_extractor",
+        "COLMAP spherical preflight feature_extractor",
         cancel_event=cancel_event,
     )
-    print("SphereSfM GPU preflight passed.", flush=True)
+    print("COLMAP spherical GPU preflight passed.", flush=True)
     print("[progress] 1/1", flush=True)
     raise_if_cancelled(cancel_event)
 
@@ -439,9 +439,9 @@ def _run_spheresfm_prepare(job: dict, *, cancel_event: CancellationToken | None 
             source_masks_dir,
             Path(str(job["output_masks_dir"])),
         )
-        print(f"Prepared SphereSfM masks: copied={copied}, missing={missing}", flush=True)
+        print(f"Prepared COLMAP spherical masks: copied={copied}, missing={missing}", flush=True)
     else:
-        print("SphereSfM masks disabled.", flush=True)
+        print("COLMAP spherical masks disabled.", flush=True)
         print(f"[progress] {len(images)}/{len(images)}", flush=True)
     raise_if_cancelled(cancel_event)
 

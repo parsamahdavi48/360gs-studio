@@ -184,7 +184,7 @@ def test_step5_uses_training_log_dir_independent_of_step4_route(tmp_path: Path) 
 
     step._set_export_method("spheresfm")
 
-    assert step.process_log_dir() == step4_meta_dir(tmp_path) / "logs" / "spheresfm"
+    assert step.process_log_dir() == step4_meta_dir(tmp_path) / "logs" / "colmap_equirect"
     assert training.process_log_dir() == expected_training_logs
 
 

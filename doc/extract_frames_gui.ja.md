@@ -1,6 +1,6 @@
 # Step 1 フレーム抽出GUI
 
-Step 1 は、360°動画、通常動画、または既に用意してある連番静止画フォルダから、SfM/3DGSに使うシーン画像を作る画面です。ここで作った `images/` と `_stechdrive/frames/selected_frames.csv` が、Step 2の確認、Step 3のマスク生成、Metashape、COLMAP、SphereSfMなどへ進む土台になります。
+Step 1 は、360°動画、通常動画、または既に用意してある連番静止画フォルダから、SfM/3DGSに使うシーン画像を作る画面です。ここで作った `images/` と `_stechdrive/frames/selected_frames.csv` が、Step 2の確認、Step 3のマスク生成、Metashape、COLMAP、COLMAP球面SfMなどへ進む土台になります。
 
 シーンフォルダを指定し、右側の `入力ソース一覧` に動画や静止画フォルダを追加して処理します。動画は指定した間隔でフレーム抽出し、静止画フォルダはシーンの `images/` にコピーして登録します。既定でONの `変化補正` により、似ている冗長なフレームを減らし、視点変化が大きい区間の候補を追加できます。抽出処理を高速化したい場合は `変化補正` をOFFにします。
 
