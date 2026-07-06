@@ -117,6 +117,60 @@ def test_dry_run_does_not_install_missing_python(monkeypatch: pytest.MonkeyPatch
     assert update_venv.main() == 0
 
 
+def test_rename_path_with_retries_handles_transient_lock(monkeypatch: pytest.MonkeyPatch) -> None:
+    sleeps: list[float] = []
+    monkeypatch.setattr(update_venv.time, "sleep", lambda delay: sleeps.append(delay))
+
+    class FlakyPath:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def rename(self, _target: Path) -> None:
+            self.calls += 1
+            if self.calls < 3:
+                raise PermissionError("locked")
+
+    source = FlakyPath()
+
+    update_venv.rename_path_with_retries(
+        source,
+        Path(".venv"),
+        description="test promotion",
+        attempts=3,
+        retry_delay_sec=0.5,
+    )
+
+    assert source.calls == 3
+    assert sleeps == [0.5, 0.5]
+
+
+def test_rename_path_with_retries_raises_after_last_attempt(monkeypatch: pytest.MonkeyPatch) -> None:
+    sleeps: list[float] = []
+    monkeypatch.setattr(update_venv.time, "sleep", lambda delay: sleeps.append(delay))
+
+    class LockedPath:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def rename(self, _target: Path) -> None:
+            self.calls += 1
+            raise PermissionError("locked")
+
+    source = LockedPath()
+
+    with pytest.raises(PermissionError):
+        update_venv.rename_path_with_retries(
+            source,
+            Path(".venv"),
+            description="test promotion",
+            attempts=2,
+            retry_delay_sec=0.5,
+        )
+
+    assert source.calls == 2
+    assert sleeps == [0.5]
+
+
 def test_repair_activation_scripts_after_venv_promotion(tmp_path: Path) -> None:
     venv = tmp_path / ".venv"
     scripts = venv / "Scripts"

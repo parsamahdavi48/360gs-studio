@@ -11,6 +11,7 @@ from core.app_job import AppJob
 from core.apriltag_scale_job_spec import apriltag_scale_estimate_job
 from core.cancellation import AppJobCancelled
 from gui.common.process_runner import ProcessRunner, _external_command_for_app_job
+from scripts.create_release_zip import include_in_release
 
 
 def _app():
@@ -205,7 +206,7 @@ def test_process_runner_offloads_workflow_app_job(monkeypatch, tmp_path: Path) -
             _process_events_until(app, lambda: not runner.is_running())
 
 
-def test_external_command_for_app_job_uses_workflow_job_script(tmp_path: Path) -> None:
+def test_external_command_for_app_job_uses_workflow_job_module(tmp_path: Path) -> None:
     job_path = tmp_path / "metashape.json"
     job = AppJob("workflow", {"kind": "metashape_preprocess"}, job_path)
 
@@ -213,8 +214,23 @@ def test_external_command_for_app_job_uses_workflow_job_script(tmp_path: Path) -
 
     assert cmd is not None
     assert cmd[0] == sys.executable
-    assert cmd[1].endswith("scripts\\run_workflow_job.py") or cmd[1].endswith("scripts/run_workflow_job.py")
-    assert cmd[2:] == ["--job", str(job_path)]
+    assert cmd[1:] == ["-m", "core.workflow_job_cli", "--job", str(job_path)]
+
+
+def test_external_workflow_app_job_command_does_not_target_release_excluded_script(tmp_path: Path) -> None:
+    job = AppJob("workflow", {"kind": "metashape_preprocess"}, tmp_path / "job.json")
+
+    cmd = _external_command_for_app_job(job)
+
+    assert cmd is not None
+    if len(cmd) > 1 and cmd[1].endswith(".py"):
+        repo_root = Path.cwd().resolve()
+        script_path = Path(cmd[1]).resolve()
+        try:
+            relative_script = script_path.relative_to(repo_root).as_posix()
+        except ValueError:
+            return
+        assert include_in_release(relative_script)
 
 
 def test_external_command_for_app_job_keeps_non_workflow_jobs_internal(tmp_path: Path) -> None:

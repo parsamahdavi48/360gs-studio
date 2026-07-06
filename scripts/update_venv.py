@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import sys
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -19,6 +20,8 @@ PYTHON_CACHE_MAX_AGE_SEC = 7 * 24 * 60 * 60
 LOG_FILE: Path | None = None
 REQUIREMENTS_DIR = Path(__file__).resolve().parents[1] / "requirements"
 SAM31_SOURCE_OK_REQUIREMENTS = {"iopath"}
+FILE_OPERATION_ATTEMPTS = 12
+FILE_OPERATION_RETRY_DELAY_SEC = 2.0
 
 
 def read_requirements_file(name: str, *, required: bool = True) -> list[str]:
@@ -606,9 +609,54 @@ def full_version_major_minor(version: str | None) -> tuple[int, int] | None:
     return int(match.group(1)), int(match.group(2))
 
 
+def retry_file_operation(
+    description: str,
+    operation: Callable[[], None],
+    *,
+    attempts: int,
+    retry_delay_sec: float,
+) -> None:
+    for attempt in range(1, attempts + 1):
+        try:
+            operation()
+            return
+        except OSError as exc:
+            if attempt == attempts:
+                emit(f"[ERROR] {description} failed: {type(exc).__name__}: {exc}")
+                raise
+            emit(
+                f"[WARN] {description} failed on attempt {attempt}/{attempts}: "
+                f"{type(exc).__name__}: {exc}"
+            )
+            if retry_delay_sec > 0:
+                time.sleep(retry_delay_sec)
+
+
 def remove_dir(path: Path) -> None:
-    if path.exists():
-        shutil.rmtree(path)
+    if not path.exists():
+        return
+    retry_file_operation(
+        f"Removing {path}",
+        lambda: shutil.rmtree(path),
+        attempts=FILE_OPERATION_ATTEMPTS,
+        retry_delay_sec=FILE_OPERATION_RETRY_DELAY_SEC,
+    )
+
+
+def rename_path_with_retries(
+    source: Path,
+    target: Path,
+    *,
+    description: str,
+    attempts: int = FILE_OPERATION_ATTEMPTS,
+    retry_delay_sec: float = FILE_OPERATION_RETRY_DELAY_SEC,
+) -> None:
+    retry_file_operation(
+        description,
+        lambda: source.rename(target),
+        attempts=attempts,
+        retry_delay_sec=retry_delay_sec,
+    )
 
 
 def has_pytest_suite(repo_root: Path) -> bool:
@@ -683,15 +731,15 @@ def adopt_venv(repo_root: Path, candidate_venv: Path, *, repair_python: Path, ke
         timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
         backup = repo_root / f".venv-backup-{timestamp}"
         emit(f"[INFO] Backing up existing .venv to {backup.name}")
-        final_venv.rename(backup)
+        rename_path_with_retries(final_venv, backup, description=f"Backing up {final_venv} to {backup}")
 
     try:
         emit("[INFO] Promoting tested environment to .venv")
-        candidate_venv.rename(final_venv)
+        rename_path_with_retries(candidate_venv, final_venv, description=f"Promoting {candidate_venv} to {final_venv}")
         repair_venv(final_venv, repair_python=repair_python)
     except Exception:
         if backup is not None and backup.exists() and not final_venv.exists():
-            backup.rename(final_venv)
+            rename_path_with_retries(backup, final_venv, description=f"Restoring {backup} to {final_venv}")
         raise
 
     if backup is not None and backup.exists() and not keep_backup:
@@ -888,7 +936,19 @@ def main() -> int:
             reports.append(CandidateReport(version, "not used", "candidate venv failed verification"))
             continue
 
-        adopt_venv(repo_root, candidate_venv, repair_python=candidate.executable, keep_backup=args.keep_backup)
+        try:
+            adopt_venv(repo_root, candidate_venv, repair_python=candidate.executable, keep_backup=args.keep_backup)
+        except Exception as exc:
+            detail = f"{type(exc).__name__}: {exc}"
+            emit(f"[ERROR] Failed to promote tested environment to .venv: {detail}")
+            reports.append(CandidateReport(version, "not used", f"promotion failed ({detail})"))
+            emit_summary(
+                result="failed; candidate venv could not be promoted to .venv",
+                existing_venv=existing_venv,
+                final_venv=read_venv_full_version(repo_root),
+                reports=reports,
+            )
+            return 1
         emit(f"[DONE] .venv now uses Python {candidate.label}.")
         final_venv = read_venv_full_version(repo_root)
         before_minor = full_version_major_minor(existing_venv)

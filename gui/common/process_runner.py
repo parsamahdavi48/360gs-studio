@@ -19,8 +19,7 @@ from core.app_job import APP_JOB_WORKFLOW, AppJob, run_app_job
 from core.cancellation import AppJobCancelled
 from gui.common.runner_types import StepCommand, StepCommandPhase, StepCommandQueue
 
-_REPO_ROOT = Path(__file__).resolve().parents[2]
-_RUN_WORKFLOW_JOB_SCRIPT = _REPO_ROOT / "scripts" / "run_workflow_job.py"
+_WORKFLOW_JOB_MODULE = "core.workflow_job_cli"
 
 
 class _SignalWriter:
@@ -76,7 +75,7 @@ class _InternalJobWorker(QObject):
 
 def _external_command_for_app_job(job: AppJob) -> list[str] | None:
     if job.job_type == APP_JOB_WORKFLOW and job.job_path is not None:
-        return [sys.executable, str(_RUN_WORKFLOW_JOB_SCRIPT), "--job", str(job.job_path)]
+        return [sys.executable, "-m", _WORKFLOW_JOB_MODULE, "--job", str(job.job_path)]
     return None
 
 
