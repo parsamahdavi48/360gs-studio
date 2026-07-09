@@ -39,6 +39,7 @@ from gui.steps.step3_mask_records import record_mask_outputs
 
 _PROJECTION_EQUIRECT = "equirect"
 _PROJECTION_NORMAL = "normal"
+_DATASET_MASK_LEFT_PADDING = 8
 
 
 class DatasetMaskStep(MaskStep):
@@ -92,6 +93,8 @@ class DatasetMaskStep(MaskStep):
 
         form = QFormLayout()
         form.setSpacing(6)
+        form.setContentsMargins(_DATASET_MASK_LEFT_PADDING, 0, 0, 0)
+        self.dataset_mask_mode_form = form
         self.dataset_mask_mode_combo = QComboBox()
         self.dataset_mask_mode_combo.setToolTip(i18n.tip("DATASET_MASK_MODE"))
         for mode, label_key in (
@@ -111,6 +114,7 @@ class DatasetMaskStep(MaskStep):
         form.addRow(self.dataset_mask_rebuild_all_cb)
         self.dataset_mask_rebuild_all_label = form.labelForField(self.dataset_mask_rebuild_all_cb)
         self.settings_layout.insertLayout(0, form)
+        self.mask_task_row.setContentsMargins(_DATASET_MASK_LEFT_PADDING, 0, 0, 0)
         self._sync_dataset_generation_controls_for_mode()
 
     def _mode_tip_key(self, mode: str) -> str:

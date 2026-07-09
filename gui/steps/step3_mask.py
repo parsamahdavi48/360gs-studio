@@ -327,6 +327,7 @@ class MaskStep(
 
         task_row.addStretch()
 
+        self.mask_task_row = task_row
         layout.addLayout(task_row)
 
         # --- マスク設定タブ ---

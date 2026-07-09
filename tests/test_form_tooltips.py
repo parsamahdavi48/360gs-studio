@@ -293,6 +293,8 @@ def test_step5_dataset_mask_mode_uses_compact_combo_without_static_explanations(
     assert mask_step.mask_settings_tabs.tabText(0) == i18n.t("MASK_TAB_YOLO")
     assert step.settings_tabs.tabText(step._dataset_mask_tab_index) != mask_step.mask_settings_tabs.tabText(0)
     assert isinstance(mask_step.dataset_mask_mode_combo, QComboBox)
+    assert mask_step.dataset_mask_mode_form.contentsMargins().left() == 8
+    assert mask_step.mask_task_row.contentsMargins().left() == 8
     assert mask_step.dataset_mask_mode_combo.toolTip() == i18n.tip("DATASET_MASK_MODE")
     assert {
         mask_step.dataset_mask_mode_combo.itemData(index)
