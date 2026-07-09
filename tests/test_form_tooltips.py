@@ -311,6 +311,7 @@ def test_step5_dataset_mask_mode_uses_compact_combo_without_static_explanations(
     mask_step.set_mask_mode(DATASET_MASK_GENERATE_TRAINING)
     assert not mask_step.dataset_mask_rebuild_all_cb.isHidden()
     assert mask_step.dataset_mask_rebuild_all_cb.text() == i18n.t("DATASET_MASK_REBUILD_ALL")
+    assert mask_step.dataset_mask_rebuild_all_cb.toolTip() == i18n.tip("DATASET_MASK_REBUILD_ALL")
     assert not hasattr(mask_step, "dataset_mask_note")
     assert mask_step.metashape_notice.isHidden()
     assert mask_step.images_path_row.isHidden()
