@@ -108,12 +108,7 @@ class DatasetMaskStep(MaskStep):
         self.dataset_mask_rebuild_all_cb = QCheckBox(i18n.t("DATASET_MASK_REBUILD_ALL"))
         self.dataset_mask_rebuild_all_cb.setToolTip(i18n.tip("DATASET_MASK_REBUILD_ALL"))
         self.dataset_mask_rebuild_all_cb.toggled.connect(lambda _checked: self._update_ready_status())
-        add_tooltip_row(
-            form,
-            i18n.t("DATASET_MASK_REBUILD_SCOPE"),
-            self.dataset_mask_rebuild_all_cb,
-            i18n.tip("DATASET_MASK_REBUILD_SCOPE"),
-        )
+        form.addRow(self.dataset_mask_rebuild_all_cb)
         self.dataset_mask_rebuild_all_label = form.labelForField(self.dataset_mask_rebuild_all_cb)
         self.settings_layout.insertLayout(0, form)
         self._sync_dataset_generation_controls_for_mode()

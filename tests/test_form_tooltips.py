@@ -308,6 +308,7 @@ def test_step5_dataset_mask_mode_uses_compact_combo_without_static_explanations(
     assert mask_step.mask_scope_combo.isHidden()
     assert mask_step.mask_scope_row_label.isHidden()
     assert mask_step.dataset_mask_rebuild_all_cb.isHidden()
+    assert mask_step.dataset_mask_rebuild_all_label is None
     mask_step.set_mask_mode(DATASET_MASK_GENERATE_TRAINING)
     assert not mask_step.dataset_mask_rebuild_all_cb.isHidden()
     assert mask_step.dataset_mask_rebuild_all_cb.text() == i18n.t("DATASET_MASK_REBUILD_ALL")
