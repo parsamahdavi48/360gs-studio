@@ -146,6 +146,8 @@ The Step 5 mask output setting is for the training dataset output. Step 3 `masks
 | `Rebuild Training Masks` | Training masks should be rebuilt with the current mask settings. The app creates them from the `images/` used for Step 3 SfM, then splits them for Cubemap output or writes them as dataset `masks/` for 3DGUT/equirect output. |
 | `No Masks` | Training should run without dataset mask links, or masks will be handled manually in the training app. |
 
+When `Rebuild Training Masks` is selected, missing masks and masks affected by changed settings are regenerated automatically. Turn on `Force overwrite` only when every existing training mask should be overwritten and rebuilt.
+
 ### Image Type
 
 `PINHOLE` expands ERP 360° images into normal perspective views. Use it first for normal Postshot, Brush, and LichtFeld training.

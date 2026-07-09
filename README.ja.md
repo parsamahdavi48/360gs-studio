@@ -1,6 +1,6 @@
 # stechdrive-3dgs-utils
 
-**v1.25.0**
+**v1.25.2**
 
 ## これは何？
 
@@ -12,7 +12,7 @@
 
 通常利用は、最新リリースZIPをダウンロードしてください。
 
-[stechdrive-3dgs-utils-v1.25.0.zip をダウンロード](https://github.com/stechdrive/stechdrive-3dgs-utils/releases/download/v1.25.0/stechdrive-3dgs-utils-v1.25.0.zip)
+[stechdrive-3dgs-utils-v1.25.2.zip をダウンロード](https://github.com/stechdrive/stechdrive-3dgs-utils/releases/download/v1.25.2/stechdrive-3dgs-utils-v1.25.2.zip)
 
 ZIPを展開したら、`setup_windows.bat`、続いて `run_gui.bat` を実行します。
 
@@ -53,6 +53,7 @@ RealityScanで再アラインしたCSV/PLYを、LichtFeldでDatasetとして開�
 - 360°画像だけでなく、通常動画からのフレーム抽出や通常画像の連番画像にも使えます。人物・車両・空・白飛びなどを、SfMに渡す前のマスク前処理としてまとめて作成できます。
 - Step 4では、外部SfM結果を使うか、COLMAP Cubemap RigまたはCOLMAP 4.1以降の球面SfMをこのアプリから実行するかを選びます。
 - Step 5では、Metashape / COLMAP球面 / RealityScan / COLMAPの結果から、NeRF系JSON/PLY、COLMAP形式データセット、LichtFeld向けRealityScan変換、AprilTagスケール補正などを選んで実行できます。
+- Step 5の `マスク出力` は、既定ではStep 3で作ったSfM用マスクを学習にも使います。学習時だけ違うマスクにしたい場合は、Step 3のSfM入力画像から学習用マスクを作り直し、Cubemap出力ではマスクもCubemapへ分割し、3DGUT/equirect出力では対応するデータセットマスクとして書き出します。
 - シーンプレビューで、SfM結果やデータセットの点群、カメラ位置、選択カメラの画像、対応マスクを同じ画面で確認できます。Step 4のビューワーカードから開けます。
 - AprilTagを撮影前に印刷・配置しておけば、Step 5の `スケール調整` で出力済みデータセットからメートル換算のスケールを推定できます。推定値を確認してから、対象データセットのカメラ位置と点群へ同じscaleを反映できます。
 - Windows向けセットアップスクリプトで、Python環境、FFmpeg/FFprobe、主要Pythonパッケージの準備をまとめて行えます。通常利用は `run_gui.bat` から起動し、リリース更新は `update.bat` から実行できます。
@@ -168,6 +169,8 @@ checkpointを手動で `models/sam3.1/sam3.1_multiplex.pt` に置くこともで
 
 このアプリの主な成果物は、Step 5で作成する3DGS用データセットです。Step 5で作成したデータセットフォルダは、LichtFeld Studio、Postshot、Brushなどの3DGSアプリに直接読み込んで学習できます。学習アプリ側で画質、モデル、ステップ数、マスク、出力形式を確認しながら調整したい場合は、この使い方が基本です。
 
+Step 5のマスク出力は、Step 3のSfM用マスク生成とは別に管理されます。`マスクを変更しない` はStep 3のマスクを学習にも使い、`トレーニング時に使用するマスクを作り直す` はStep 3のSfM入力画像から学習専用マスクを作ります。`マスクなし` はデータセットにマスク指定を入れません。作り直しモードでは通常、未作成または設定変更が必要なマスクだけを再生成します。既存の学習用マスクを全件書き直したい場合だけ `強制上書き` をオンにします。
+
 | Step 5ルート | データセットフォルダ |
 | --- | --- |
 | Metashape + キューブマップ | `output/metashape_cubemap/` |
@@ -202,7 +205,7 @@ Step 6は、対応するCLIを持つ学習アプリ向けの実行ショート�
 7. 生成された `masks/` フォルダをMetashapeにマスクとして読み込み、SfMを実行します。混在ソースを使う場合も、Metashape側で通常どおりアラインします。
 8. MetashapeからカメラをAgisoft XML、疎点群をStanford PLYとしてエクスポートします。どちらもシーンフォルダに保存しておくと、このアプリから扱いやすくなります。別の場所に保存した場合はGUIで手動選択します。
 9. Step 4では `既存のSfM結果を使う` を選びます。Metashapeでカメラポーズと疎点群を作成済みなら、この工程で追加処理は不要です。
-10. Step 5でMetashapeのXML/PLYを使い、学習アプリに合わせてNeRF系JSON/PLY、COLMAP形式データセット、またはRealityScan再アライン用データを作成します。
+10. Step 5でMetashapeのXML/PLYを使い、学習アプリに合わせてNeRF系JSON/PLY、COLMAP形式データセット、またはRealityScan再アライン用データを作成します。`マスク出力` では、通常はStep 3のSfM用マスクをそのまま使い、SfM時と学習時で除外したい領域を変える場合だけ学習用マスクを作り直します。
 11. AprilTagでスケール推定する場合は、撮影前にタグを印刷して配置しておきます。CubemapまたはCOLMAP系データセット作成後、Step 5の `スケール調整` でタグ実寸とIDを入力し、結果が妥当な場合だけ反映します。
 12. Step 5の出力をLichtFeld Studio、Postshot、Brushなどに読み込んで学習します。対応CLIで再実行やヘッドレス学習を行いたい場合は、Step 6からLichtFeld Studio、Postshot、Brush、gsplatを起動できます。
 

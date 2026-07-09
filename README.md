@@ -1,6 +1,6 @@
 # stechdrive-3dgs-utils
 
-**v1.25.0**
+**v1.25.2**
 
 ## What Is This?
 
@@ -12,7 +12,7 @@ The main workflow is to organize and mask ERP/equirectangular footage from camer
 
 For normal use, download the latest release ZIP:
 
-[Download stechdrive-3dgs-utils-v1.25.0.zip](https://github.com/stechdrive/stechdrive-3dgs-utils/releases/download/v1.25.0/stechdrive-3dgs-utils-v1.25.0.zip)
+[Download stechdrive-3dgs-utils-v1.25.2.zip](https://github.com/stechdrive/stechdrive-3dgs-utils/releases/download/v1.25.2/stechdrive-3dgs-utils-v1.25.2.zip)
 
 After extracting the ZIP, run `setup_windows.bat`, then `run_gui.bat`.
 
@@ -53,6 +53,7 @@ For video or image sequences from DSLR, mirrorless, smartphone, or other normal 
 - Use the same mask-preparation workflow for normal-camera video after Step 1 extraction and for normal photo or image-sequence sets, not only 360° images. This is useful before sending images to SfM software.
 - In Step 4, choose how camera poses and sparse points will be prepared: use an existing SfM result, run COLMAP cubemap-rig or COLMAP 4.1+ spherical SfM from this app, or create RealityScan realignment data from a Metashape result.
 - In Step 5, convert Metashape, COLMAP spherical, RealityScan, or COLMAP results into NeRF-style JSON/PLY datasets, COLMAP-format datasets, LichtFeld-ready RealityScan conversions, or AprilTag scale-adjusted outputs.
+- Step 5 `Mask Output` keeps the Step 3 SfM masks by default, or rebuilds training masks from the Step 3 SfM input images when training should use different masks. Cubemap output splits those masks into cubemap views, while 3DGUT/equirect output writes matching dataset masks.
 - Inspect SfM results and datasets in Scene Preview, with the point cloud, camera positions, selected camera image, and matching masks in one view. Open it from Step 4's viewer card.
 - If you print and place AprilTags before capture, Step 5 `Scale Adjustment` can estimate metric scale from an existing dataset. After reviewing the estimate, you can apply the same scale to the target dataset camera positions and point cloud.
 - Prepare the Windows environment with setup scripts that handle Python, FFmpeg/FFprobe, and the main Python packages. Normal use starts from `run_gui.bat`, and release updates run through `update.bat`.
@@ -168,6 +169,8 @@ This app does not bundle LichtFeld Studio, Postshot, Brush, or gsplat itself. St
 
 The main output of this app is the 3DGS dataset created in Step 5. Open the Step 5 dataset folder directly in 3DGS applications such as LichtFeld Studio, Postshot, and Brush. This is the normal path when you want to inspect and tune image quality, model settings, step counts, masks, and export options inside the training app.
 
+Step 5 mask output is controlled separately from Step 3 SfM mask generation. `Keep Masks Unchanged` uses the Step 3 masks for training, `Rebuild Training Masks` creates training-only masks from the Step 3 SfM input images, and `No Masks` omits mask links from the dataset. In rebuild mode, the app normally regenerates only masks that are missing or affected by changed settings; turn on `Force overwrite` only when every existing training mask should be written again.
+
 | Step 5 route | Dataset folder |
 | --- | --- |
 | Metashape + cubemap | `output/metashape_cubemap/` |
@@ -202,7 +205,7 @@ Detailed GUI docs:
 7. Import the generated `masks/` folder into Metashape as per-image masks, then run SfM. Mixed sources can be aligned in Metashape as usual.
 8. Export Metashape cameras as Agisoft XML and sparse points as Stanford PLY. Saving both files in the scene folder is recommended; otherwise select them manually in the GUI.
 9. In Step 4, choose `Use Existing SfM Result`. If Metashape already produced camera poses and sparse points, there is usually nothing else to run in this step.
-10. In Step 5, use the Metashape XML/PLY result to create the dataset format your training app expects: NeRF-style JSON/PLY, a COLMAP-format dataset, or RealityScan realignment data.
+10. In Step 5, use the Metashape XML/PLY result to create the dataset format your training app expects: NeRF-style JSON/PLY, a COLMAP-format dataset, or RealityScan realignment data. In `Mask Output`, keep the Step 3 SfM masks for the default workflow, or choose `Rebuild Training Masks` when training should exclude a different set of regions than SfM.
 11. To estimate scale with AprilTags, print and place the tags before capture. After creating a cubemap or COLMAP-style dataset, use Step 5 `Scale Adjustment`, enter the printed tag size and IDs, and apply the scale only when the estimate looks reasonable.
 12. Load the Step 5 output in LichtFeld Studio, Postshot, Brush, or another training app. When you want repeat runs or headless training through a compatible CLI, use Step 6 to launch LichtFeld Studio, Postshot, Brush, or gsplat with the dataset you just created.
 
