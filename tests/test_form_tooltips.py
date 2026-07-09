@@ -286,8 +286,12 @@ def test_step5_dataset_mask_mode_uses_compact_combo_without_static_explanations(
     step = CubemapStep(Path.cwd())
     step.enable_dataset_mask_settings()
     assert step._dataset_mask_step is not None
+    assert step._dataset_mask_tab_index is not None
+    assert step.settings_tabs.tabText(step._dataset_mask_tab_index) == i18n.t("STEP4_TAB_MASK_SETTINGS")
 
     mask_step = step._dataset_mask_step
+    assert mask_step.mask_settings_tabs.tabText(0) == i18n.t("MASK_TAB_YOLO")
+    assert step.settings_tabs.tabText(step._dataset_mask_tab_index) != mask_step.mask_settings_tabs.tabText(0)
     assert isinstance(mask_step.dataset_mask_mode_combo, QComboBox)
     assert mask_step.dataset_mask_mode_combo.toolTip() == i18n.tip("DATASET_MASK_MODE")
     assert {

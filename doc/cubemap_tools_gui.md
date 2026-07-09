@@ -138,7 +138,7 @@ Scale application multiplies the target dataset's camera positions and point clo
 
 ### Mask Output
 
-The Step 5 mask setting is for the training dataset output. Step 3 `masks/` can stay as the SfM mask source while training masks are rebuilt separately when needed.
+The Step 5 mask output setting is for the training dataset output. Step 3 `masks/` can stay as the SfM mask source while training masks are rebuilt separately when needed.
 
 | Mode | Use when |
 | --- | --- |
