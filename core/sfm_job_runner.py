@@ -61,6 +61,7 @@ def _run_colmap_mixed_project(job: dict, *, cancel_event: CancellationToken | No
         workers=str(job["workers"]),
         remap_cache_limit=str(job["remap_cache_limit"]),
         rig_name=str(job["rig_name"]),
+        source_masks_dir=Path(str(job["source_masks_dir"])) if str(job.get("source_masks_dir") or "") else None,
         cancel_event=cancel_event,
         progress_callback=_progress_log_callback(cancel_event),
     )

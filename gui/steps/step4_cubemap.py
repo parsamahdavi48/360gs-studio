@@ -922,6 +922,9 @@ class CubemapStep(
         step = DatasetMaskStep(
             self.base_dir,
             dataset_root_provider=self._current_dataset_root_for_manifest,
+            source_images_dir_provider=self._metashape_images_dir,
+            source_masks_dir_provider=self._mask_dir,
+            generated_source_masks_dir_provider=self._dataset_training_source_masks_dir,
             parent=self,
         )
         step.primary_action_state_changed.connect(self.primary_action_state_changed)
@@ -936,6 +939,11 @@ class CubemapStep(
         self.work_stack.addWidget(step.preview_pane)
         step.hide()
         return step
+
+    def _dataset_training_source_masks_dir(self) -> Path:
+        if not self.scene_dir:
+            raise ValueError(i18n.t("SCENE_REQUIRED_ACTION_HINT"))
+        return step4_meta_dir(Path(self.scene_dir)) / "dataset_masks" / "training_source_masks"
 
     def _sync_dataset_mask_context_ui(self) -> None:
         enabled = self._dataset_mask_settings_context_enabled and self._dataset_mask_tab_index is not None

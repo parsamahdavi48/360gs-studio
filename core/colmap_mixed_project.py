@@ -88,13 +88,14 @@ def prepare_colmap_mixed_project(
     workers: str | int = "auto",
     remap_cache_limit: str | int = "auto",
     rig_name: str = DEFAULT_RIG_NAME,
+    source_masks_dir: str | Path | None = None,
     cancel_event: CancellationToken | None = None,
     progress_callback: ProgressCallback | None = None,
 ) -> ColmapMixedProjectResult:
     raise_if_cancelled(cancel_event)
     scene = Path(scene_dir)
     output = Path(output_dir)
-    inventory = build_scene_inventory(scene)
+    inventory = build_scene_inventory(scene, masks_dir=source_masks_dir)
     raise_if_cancelled(cancel_event)
     plan = build_colmap_mixed_sfm_input_plan(inventory)
     if plan.issues:

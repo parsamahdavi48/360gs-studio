@@ -14,7 +14,6 @@ from core.dataset_mask_policy import (
     DATASET_MASK_CONVERT_SFM,
     DATASET_MASK_GENERATE_TRAINING,
     DATASET_MASK_NONE,
-    DATASET_MASK_REUSE_EXISTING,
 )
 from gui import i18n, theme
 from gui.common.drag_spinbox import DragDoubleSpinBox, DragSpinBox
@@ -297,7 +296,6 @@ def test_step5_dataset_mask_mode_uses_compact_combo_without_static_explanations(
     } == {
         DATASET_MASK_CONVERT_SFM,
         DATASET_MASK_GENERATE_TRAINING,
-        DATASET_MASK_REUSE_EXISTING,
         DATASET_MASK_NONE,
     }
     assert mask_step.dataset_mask_mode_combo.itemText(0) == i18n.t("DATASET_MASK_MODE_CONVERT_SFM")
@@ -305,7 +303,14 @@ def test_step5_dataset_mask_mode_uses_compact_combo_without_static_explanations(
     assert mask_step.dataset_mask_mode_combo.itemData(0, Qt.ToolTipRole) == i18n.tip(
         "DATASET_MASK_MODE_CONVERT_SFM_MASKS"
     )
-    assert mask_step.dataset_mask_mode_combo.itemData(3, Qt.ToolTipRole) == i18n.tip("DATASET_MASK_MODE_NONE")
+    assert mask_step.dataset_mask_mode_combo.itemData(2, Qt.ToolTipRole) == i18n.tip("DATASET_MASK_MODE_NONE")
+    assert mask_step.dataset_mask_mode_combo.findData("reuse_existing") < 0
+    assert mask_step.mask_scope_combo.isHidden()
+    assert mask_step.mask_scope_row_label.isHidden()
+    assert mask_step.dataset_mask_rebuild_all_cb.isHidden()
+    mask_step.set_mask_mode(DATASET_MASK_GENERATE_TRAINING)
+    assert not mask_step.dataset_mask_rebuild_all_cb.isHidden()
+    assert mask_step.dataset_mask_rebuild_all_cb.text() == i18n.t("DATASET_MASK_REBUILD_ALL")
     assert not hasattr(mask_step, "dataset_mask_note")
     assert mask_step.metashape_notice.isHidden()
     assert mask_step.images_path_row.isHidden()

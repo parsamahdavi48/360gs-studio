@@ -104,6 +104,9 @@ class Step4ManifestMixin:
         writes_view_images = route_uses_view_export and self._writes_images()
         writes_view_masks = route_uses_view_export and self._writes_masks()
         dataset_mask_mode = self._dataset_mask_mode_for_settings()
+        dataset_source_masks = self._dataset_input_mask_dir_for_conversion(require_existing=False)
+        if dataset_mask_mode in {"none", "reuse_existing"}:
+            dataset_source_masks = None
         portable_dataset_kind = "3dgut" if direct_source_output else "projection_views"
         uses_lichtfeld_final_orientation = (
             self._uses_lichtfeld_final_correction() or self._uses_spheresfm_lichtfeld_final_correction()
@@ -199,14 +202,20 @@ class Step4ManifestMixin:
                 "write_masks": writes_view_masks,
                 "no_image": direct_source_output or not route_uses_view_export or not self._writes_any_view_assets(),
                 "uses_source_images": direct_source_output,
-                "uses_source_masks": direct_source_output and self._mask_dir().is_dir(),
+                "uses_source_masks": direct_source_output and dataset_source_masks is not None,
                 "export_colmap": self._is_metashape_method() and self.export_colmap_cb.isChecked(),
             },
             "dataset_masks": {
                 "mode": dataset_mask_mode,
                 "images_dir": "images" if route_uses_view_export or direct_source_output else "",
                 "masks_dir": "masks" if dataset_mask_mode != "none" else "",
-                "source_masks_dir": str(self._mask_dir()),
+                "source_masks_dir": str(dataset_source_masks or ""),
+                "sfm_masks_dir": str(self._mask_dir()),
+                "generated_source_masks_dir": str(
+                    self._dataset_mask_step.generated_source_masks_dir()
+                    if getattr(self, "_dataset_mask_step", None) is not None
+                    else ""
+                ),
                 "write_converted_sfm_masks": writes_view_masks,
             },
             "postprocess": {

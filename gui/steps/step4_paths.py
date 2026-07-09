@@ -9,6 +9,11 @@ from pathlib import Path
 from PySide6.QtWidgets import QMessageBox
 
 from core.colmap_rig_export import pinhole_camera_params
+from core.dataset_mask_policy import (
+    DATASET_MASK_GENERATE_TRAINING,
+    DATASET_MASK_NONE,
+    DATASET_MASK_REUSE_EXISTING,
+)
 from core.scene_layout import (
     COLMAP_EQUIRECT_PROJECT_DIR_NAME,
     scene_images_dir,
@@ -308,10 +313,11 @@ class Step4PathMixin:
         output = self._display_output_dir()
         targets = [
             output / "images",
-            output / "masks",
             output / "transforms.json",
             output / "pointcloud.ply",
         ]
+        if not self._dataset_mask_preserves_output_masks():
+            targets.append(output / "masks")
         return targets
 
     def _prepare_3dgut_output_dir(self) -> bool:
@@ -340,9 +346,41 @@ class Step4PathMixin:
 
     def _link_3dgut_assets(self, output: Path) -> None:
         self._link_or_copy_tree(self._metashape_images_dir(), output / "images")
-        masks = self._mask_dir()
-        if masks.is_dir():
+        masks = self._dataset_input_mask_dir_for_conversion(require_existing=True)
+        if masks is not None and masks.is_dir():
             self._link_or_copy_tree(masks, output / "masks")
+
+    def _dataset_mask_preserves_output_masks(self) -> bool:
+        if (
+            getattr(self, "_dataset_mask_settings_context_enabled", False)
+            and getattr(self, "_dataset_mask_step", None) is not None
+        ):
+            return self._dataset_mask_step.mask_mode() == DATASET_MASK_REUSE_EXISTING
+        return False
+
+    def _dataset_input_mask_dir_for_conversion(self, *, require_existing: bool = True) -> Path | None:
+        if (
+            getattr(self, "_dataset_mask_settings_context_enabled", False)
+            and getattr(self, "_dataset_mask_step", None) is not None
+        ):
+            mode = self._dataset_mask_step.mask_mode()
+            if mode in {DATASET_MASK_REUSE_EXISTING, DATASET_MASK_NONE}:
+                return None
+            return self._dataset_mask_step.source_mask_dir_for_dataset(
+                require_existing=require_existing if mode == DATASET_MASK_GENERATE_TRAINING else True
+            )
+        masks = self._mask_dir()
+        if not masks.is_dir():
+            return None
+        return masks
+
+    def _dataset_mask_needs_output_sync(self) -> bool:
+        return (
+            getattr(self, "_dataset_mask_settings_context_enabled", False)
+            and getattr(self, "_dataset_mask_step", None) is not None
+            and self._dataset_mask_step.mask_mode() == DATASET_MASK_GENERATE_TRAINING
+            and (self._uses_direct_equirect_output() or self._uses_spheresfm_3dgut_output())
+        )
 
     @staticmethod
     def _link_or_copy_tree(source_root: Path, dest_root: Path) -> None:

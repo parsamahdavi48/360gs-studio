@@ -9,11 +9,11 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PIL import Image
 from PySide6.QtCore import Qt
 from PySide6.QtOpenGLWidgets import QOpenGLWidget
-from PySide6.QtWidgets import QApplication, QLabel, QMessageBox, QPushButton
+from PySide6.QtWidgets import QApplication, QLabel, QPushButton
 
 from core.app_job import AppJob
 from core.artifact_registry import load_artifacts
-from core.dataset_mask_policy import DATASET_MASK_GENERATE_TRAINING, DATASET_MASK_REUSE_EXISTING
+from core.dataset_mask_policy import DATASET_MASK_GENERATE_TRAINING
 from gui import i18n
 from gui.app import MainWindow
 from gui.common.perspective_preview import PREVIEW_PROJECTION_EQUIRECT, PREVIEW_PROJECTION_PERSPECTIVE
@@ -552,7 +552,7 @@ def test_colmap_nerfstudio_tool_defaults_and_builds_dataset_job(tmp_path: Path) 
     assert load_artifacts(scene, "dataset")[-1].kind == "nerf_json_ply"
 
 
-def test_colmap_text_model_training_mask_modes_control_dataset_masks(tmp_path: Path, monkeypatch) -> None:
+def test_colmap_text_model_training_mask_modes_control_dataset_masks(tmp_path: Path) -> None:
     scene = tmp_path / "scene"
     images = scene / "images"
     masks = scene / "masks"
@@ -577,24 +577,13 @@ def test_colmap_text_model_training_mask_modes_control_dataset_masks(tmp_path: P
     tool._dataset_mask_step.set_mask_mode(DATASET_MASK_GENERATE_TRAINING)
     commands = tool.build_commands()
 
-    assert [phase for phase, _cmd in commands] == ["metashape_colmap", "yolo"]
-    colmap_job = _workflow_job(commands[0][1])
-    assert colmap_job["masks_dir"] == ""
+    assert [phase for phase, _cmd in commands] == ["yolo", "metashape_colmap"]
+    colmap_job = _workflow_job(commands[1][1])
+    assert colmap_job["masks_dir"] == str(
+        scene / "_stechdrive" / "step4" / "dataset_masks" / "metashape_colmap_training_source_masks"
+    )
 
-    output_masks = scene / "output" / "metashape_colmap" / "masks"
-    output_masks.mkdir(parents=True)
-    (output_masks / "frame_0001.png").write_bytes(b"existing")
-    (scene / "output" / "metashape_colmap" / "stale.txt").write_text("old", encoding="utf-8")
-    monkeypatch.setattr(QMessageBox, "question", lambda *_args, **_kwargs: QMessageBox.Yes)
-
-    tool._dataset_mask_step.set_mask_mode(DATASET_MASK_REUSE_EXISTING)
-    commands = tool.build_commands()
-
-    assert [phase for phase, _cmd in commands] == ["metashape_colmap"]
-    colmap_job = _workflow_job(commands[0][1])
-    assert colmap_job["masks_dir"] == ""
-    assert (output_masks / "frame_0001.png").is_file()
-    assert not (scene / "output" / "metashape_colmap" / "stale.txt").exists()
+    assert tool._dataset_mask_step.dataset_mask_mode_combo.findData("reuse_existing") < 0
 
 
 def test_colmap_text_model_preview_projection_toggle_is_enabled_only_for_erp_images(tmp_path: Path) -> None:

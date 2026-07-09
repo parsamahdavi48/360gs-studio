@@ -302,6 +302,7 @@ class MaskStep(
         )
         self.mask_scope_combo.currentIndexChanged.connect(lambda _: self._update_ready_status())
         add_tooltip_row(path_form, i18n.t("MASK_SCOPE"), self.mask_scope_combo, i18n.tip("MASK_SCOPE"))
+        self.mask_scope_row_label = path_form.labelForField(self.mask_scope_combo)
         layout.addLayout(path_form)
 
         # --- 追加マスク ---

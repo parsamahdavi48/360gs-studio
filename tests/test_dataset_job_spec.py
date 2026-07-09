@@ -10,12 +10,14 @@ from core.dataset_job_spec import (
     JOB_KIND_METASHAPE_COLMAP,
     JOB_KIND_METASHAPE_NERF,
     JOB_KIND_REALITYSCAN_LFS_COLMAP,
+    JOB_KIND_SYNC_DATASET_MASKS,
     attach_dataset_masks_job,
     colmap_nerfstudio_job,
     load_dataset_job,
     metashape_colmap_job,
     metashape_nerf_job,
     realityscan_lfs_colmap_job,
+    sync_dataset_masks_job,
     write_dataset_job,
 )
 
@@ -128,6 +130,24 @@ def test_attach_dataset_masks_job_round_trips(tmp_path: Path) -> None:
     assert loaded["dataset_root"] == str(tmp_path / "scene" / "output" / "metashape_cubemap")
     assert loaded["masks_dir"] == str(tmp_path / "scene" / "output" / "metashape_cubemap" / "masks")
     assert loaded["clear"] is True
+
+
+def test_sync_dataset_masks_job_round_trips(tmp_path: Path) -> None:
+    job = sync_dataset_masks_job(
+        dataset_root=tmp_path / "scene" / "output" / "metashape_3dgut",
+        source_masks_dir=tmp_path / "scene" / "_stechdrive" / "step4" / "dataset_masks" / "training_source_masks",
+        attach=False,
+    )
+
+    path = write_dataset_job(tmp_path / "sync_masks_job.json", job)
+    loaded = load_dataset_job(path, expected_kind=JOB_KIND_SYNC_DATASET_MASKS)
+
+    assert loaded["kind"] == JOB_KIND_SYNC_DATASET_MASKS
+    assert loaded["dataset_root"] == str(tmp_path / "scene" / "output" / "metashape_3dgut")
+    assert loaded["source_masks_dir"] == str(
+        tmp_path / "scene" / "_stechdrive" / "step4" / "dataset_masks" / "training_source_masks"
+    )
+    assert loaded["attach"] is False
 
 
 def test_dataset_job_rejects_view_without_orientation(tmp_path: Path) -> None:

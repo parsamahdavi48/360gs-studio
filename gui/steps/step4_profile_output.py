@@ -6,7 +6,7 @@ import math
 
 from PySide6.QtWidgets import QComboBox
 
-from core.dataset_mask_policy import DATASET_MASK_CONVERT_SFM
+from core.dataset_mask_policy import DATASET_MASK_CONVERT_SFM, DATASET_MASK_GENERATE_TRAINING
 from gui import i18n
 from gui.steps.step4_contracts import (
     _AXIS_BRUSH,
@@ -399,7 +399,10 @@ class Step4ProfileOutputMixin:
             getattr(self, "_dataset_mask_settings_context_enabled", False)
             and getattr(self, "_dataset_mask_step", None) is not None
         ):
-            return self._dataset_mask_step.mask_mode() == DATASET_MASK_CONVERT_SFM
+            return self._dataset_mask_step.mask_mode() in {
+                DATASET_MASK_CONVERT_SFM,
+                DATASET_MASK_GENERATE_TRAINING,
+            }
         return self.export_masks_cb.isChecked()
 
     def _writes_any_view_assets(self) -> bool:

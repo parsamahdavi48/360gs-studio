@@ -138,13 +138,12 @@ Scale application multiplies the target dataset's camera positions and point clo
 
 ### Mask Output
 
-The Step 5 mask setting is for the training dataset output. Step 3 `masks/` can stay as the broad SfM mask source while the dataset output keeps a separate training mask layer.
+The Step 5 mask setting is for the training dataset output. Step 3 `masks/` can stay as the SfM mask source while training masks are rebuilt separately when needed.
 
 | Mode | Use when |
 | --- | --- |
-| `Create from SfM Masks` | The Step 3 masks should also be used for training. This converts them to match the dataset images. |
-| `Regenerate Training Masks` | SfM needed broad masks, but 3DGS training should use different targets such as people only. Masks are regenerated from the Step 5 output images. |
-| `Use Output Masks` | The dataset output already has the masks you want, and you only need to update dataset files or `mask_path` entries. |
+| `Keep Masks Unchanged (Default)` | Training masks should not be rebuilt, and the Step 3 SfM masks should be used. Cubemap output splits those masks into the same views; 3DGUT/equirect output uses the masks matching the source images. |
+| `Rebuild Training Masks` | Training masks should be rebuilt with the current mask settings. The app creates them from the `images/` used for Step 3 SfM, then splits them for Cubemap output or writes them as dataset `masks/` for 3DGUT/equirect output. |
 | `No Masks` | Training should run without dataset mask links, or masks will be handled manually in the training app. |
 
 ### Image Type

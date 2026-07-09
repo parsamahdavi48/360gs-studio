@@ -7,10 +7,10 @@ from dataclasses import replace
 from pathlib import Path
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QComboBox, QFormLayout, QWidget
+from PySide6.QtWidgets import QCheckBox, QComboBox, QFormLayout, QWidget
 
 from core.app_job import dataset_app_job
-from core.dataset_job_spec import attach_dataset_masks_job, write_dataset_job
+from core.dataset_job_spec import attach_dataset_masks_job, sync_dataset_masks_job, write_dataset_job
 from core.dataset_mask_policy import (
     DATASET_MASK_CONVERT_SFM,
     DATASET_MASK_GENERATE_TRAINING,
@@ -18,9 +18,10 @@ from core.dataset_mask_policy import (
     DATASET_MASK_REUSE_EXISTING,
     normalize_dataset_mask_mode,
 )
+from core.mask_refresh_plan import MASK_SCOPE_ALL, MASK_SCOPE_STALE
 from core.mask_source_scope import MASK_SOURCE_ALL
 from core.nerf_dataset_paths import find_nerf_transforms_path
-from core.scene_layout import jobs_dir, scene_images_dir, scene_masks_dir
+from core.scene_layout import jobs_dir, scene_images_dir, scene_masks_dir, step4_meta_dir
 from gui import i18n
 from gui.common.form_rows import add_tooltip_row
 from gui.common.runner_types import StepCommandQueue
@@ -32,12 +33,7 @@ from gui.steps.step3_mask_plan import (
     MASK_COMMAND_OVEREXPOSURE,
     MASK_COMMAND_STITCH,
     MASK_COMMAND_YOLO,
-    MASK_TASK_CUSTOM,
-    MASK_TASK_OVEREXPOSURE,
-    MASK_TASK_STITCH,
-    MASK_TASK_YOLO,
     MaskCommandSpec,
-    build_uniform_mask_command_specs,
 )
 from gui.steps.step3_mask_records import record_mask_outputs
 
@@ -53,11 +49,17 @@ class DatasetMaskStep(MaskStep):
         base_dir: Path,
         *,
         dataset_root_provider: Callable[[], Path],
+        source_images_dir_provider: Callable[[], Path] | None = None,
+        source_masks_dir_provider: Callable[[], Path] | None = None,
+        generated_source_masks_dir_provider: Callable[[], Path] | None = None,
         link_mask_paths: bool = True,
         mode_tip_keys: Mapping[str, str] | None = None,
         parent: QWidget | None = None,
     ) -> None:
         self._dataset_root_provider = dataset_root_provider
+        self._source_images_dir_provider = source_images_dir_provider
+        self._source_masks_dir_provider = source_masks_dir_provider
+        self._generated_source_masks_dir_provider = generated_source_masks_dir_provider
         self._dataset_projection = _PROJECTION_NORMAL
         self._link_mask_paths = bool(link_mask_paths)
         self._mode_tip_keys = dict(mode_tip_keys or {})
@@ -77,6 +79,7 @@ class DatasetMaskStep(MaskStep):
             ("images_path_row", "images_path_row_label"),
             ("masks_path_label", "masks_path_row_label"),
             ("mask_source_combo", "mask_source_row_label"),
+            ("mask_scope_combo", "mask_scope_row_label"),
         ):
             field = getattr(self, field_name, None)
             if field is not None:
@@ -94,7 +97,6 @@ class DatasetMaskStep(MaskStep):
         for mode, label_key in (
             (DATASET_MASK_CONVERT_SFM, "DATASET_MASK_MODE_CONVERT_SFM"),
             (DATASET_MASK_GENERATE_TRAINING, "DATASET_MASK_MODE_GENERATE_TRAINING"),
-            (DATASET_MASK_REUSE_EXISTING, "DATASET_MASK_MODE_REUSE_EXISTING"),
             (DATASET_MASK_NONE, "DATASET_MASK_MODE_NONE"),
         ):
             self.dataset_mask_mode_combo.addItem(i18n.t(label_key), mode)
@@ -102,7 +104,19 @@ class DatasetMaskStep(MaskStep):
             self.dataset_mask_mode_combo.setItemData(index, i18n.tip(self._mode_tip_key(mode)), Qt.ToolTipRole)
         self.dataset_mask_mode_combo.currentIndexChanged.connect(lambda _index: self._on_dataset_mask_mode_changed())
         add_tooltip_row(form, i18n.t("DATASET_MASK_MODE"), self.dataset_mask_mode_combo, i18n.tip("DATASET_MASK_MODE"))
+
+        self.dataset_mask_rebuild_all_cb = QCheckBox(i18n.t("DATASET_MASK_REBUILD_ALL"))
+        self.dataset_mask_rebuild_all_cb.setToolTip(i18n.tip("DATASET_MASK_REBUILD_ALL"))
+        self.dataset_mask_rebuild_all_cb.toggled.connect(lambda _checked: self._update_ready_status())
+        add_tooltip_row(
+            form,
+            i18n.t("DATASET_MASK_REBUILD_SCOPE"),
+            self.dataset_mask_rebuild_all_cb,
+            i18n.tip("DATASET_MASK_REBUILD_SCOPE"),
+        )
+        self.dataset_mask_rebuild_all_label = form.labelForField(self.dataset_mask_rebuild_all_cb)
         self.settings_layout.insertLayout(0, form)
+        self._sync_dataset_generation_controls_for_mode()
 
     def _mode_tip_key(self, mode: str) -> str:
         return self._mode_tip_keys.get(mode, f"DATASET_MASK_MODE_{mode.upper()}")
@@ -110,7 +124,7 @@ class DatasetMaskStep(MaskStep):
     def set_dataset_projection(self, projection: str) -> None:
         projection = projection if projection in {_PROJECTION_EQUIRECT, _PROJECTION_NORMAL} else _PROJECTION_NORMAL
         self._dataset_projection = projection
-        self._set_projection(projection, sync_yolo_quality=False)
+        self._sync_projection_from_project(preserve_user_quality=True)
 
     def mask_mode(self) -> str:
         return normalize_dataset_mask_mode(self.dataset_mask_mode_combo.currentData())
@@ -121,6 +135,15 @@ class DatasetMaskStep(MaskStep):
         if index >= 0:
             self.dataset_mask_mode_combo.setCurrentIndex(index)
             self._on_dataset_mask_mode_changed()
+
+    def _mask_scope(self) -> str:
+        if (
+            hasattr(self, "dataset_mask_rebuild_all_cb")
+            and self.mask_mode() == DATASET_MASK_GENERATE_TRAINING
+            and self.dataset_mask_rebuild_all_cb.isChecked()
+        ):
+            return MASK_SCOPE_ALL
+        return MASK_SCOPE_STALE
 
     def primary_action_text(self) -> str:
         mode = self.mask_mode()
@@ -161,10 +184,7 @@ class DatasetMaskStep(MaskStep):
     def build_commands(self) -> StepCommandQueue:
         mode = self.mask_mode()
         if mode == DATASET_MASK_GENERATE_TRAINING:
-            commands = [*super().build_commands()]
-            if self._link_mask_paths:
-                commands.append(self._attach_mask_paths_command())
-            return commands
+            return self.build_source_mask_commands()
         if not self._link_mask_paths:
             return []
         if mode == DATASET_MASK_REUSE_EXISTING:
@@ -174,60 +194,40 @@ class DatasetMaskStep(MaskStep):
         raise ValueError(i18n.t("DATASET_MASK_RUN_DATASET_ACTION"))
 
     def build_followup_commands(self, *, require_existing_images: bool) -> StepCommandQueue:
+        _ = require_existing_images
         mode = self.mask_mode()
-        if mode == DATASET_MASK_CONVERT_SFM:
+        if mode in {DATASET_MASK_CONVERT_SFM, DATASET_MASK_GENERATE_TRAINING}:
             return []
         if not self._link_mask_paths:
-            if mode == DATASET_MASK_GENERATE_TRAINING:
-                if require_existing_images:
-                    return [*super().build_commands()]
-                return [*self._build_pending_dataset_mask_commands()]
             return []
         if mode == DATASET_MASK_REUSE_EXISTING:
             return [self._attach_mask_paths_command()]
         if mode == DATASET_MASK_NONE:
             return [self._clear_mask_paths_command()]
-        if require_existing_images:
-            return [*super().build_commands(), self._attach_mask_paths_command()]
-        return [*self._build_pending_dataset_mask_commands(), self._attach_mask_paths_command()]
+        return []
 
-    def _build_pending_dataset_mask_commands(self) -> StepCommandQueue:
-        if not self.scene_dir:
-            raise ValueError(i18n.t("SCENE_REQUIRED_ACTION_HINT"))
-        if self.run_custom_cb.isChecked():
-            custom_mask = self._custom_mask_path_text()
-            if not custom_mask:
-                raise ValueError(i18n.t("CUSTOM_MASK_REQUIRED"))
-            if not Path(custom_mask).is_file():
-                raise ValueError(i18n.t("CUSTOM_MASK_NOT_FOUND").format(path=custom_mask))
-        requested_steps = self._selected_dataset_mask_tasks()
-        if not requested_steps:
-            raise ValueError(i18n.t("MASK_TASK_REQUIRED"))
-        specs = build_uniform_mask_command_specs(
-            requested_steps,
-            target_manifest=None,
-            merge_mode=self._mask_merge_mode_arg(),
+    def build_source_mask_commands(self) -> StepCommandQueue:
+        if self.mask_mode() != DATASET_MASK_GENERATE_TRAINING:
+            return []
+        return [*super().build_commands()]
+
+    def build_output_mask_sync_command(self) -> tuple[str, object]:
+        source_masks = self.source_mask_dir_for_dataset(require_existing=False)
+        if source_masks is None:
+            raise ValueError(i18n.t("DATASET_MASK_RUN_DATASET_ACTION"))
+        scene = Path(self.scene_dir) if self.scene_dir else self._dataset_root().parent
+        payload = sync_dataset_masks_job(
+            dataset_root=self._dataset_root(),
+            source_masks_dir=source_masks,
+            attach=self._link_mask_paths,
         )
-        steps = [(spec.phase, self._command_from_mask_spec(spec)) for spec in specs]
-        self._mask_batch_settings = self._mask_settings_snapshot()
-        self._mask_batch_phases = [phase for phase, _cmd in steps]
-        self._mask_batch_targets = []
-        return steps
-
-    def _selected_dataset_mask_tasks(self) -> list[str]:
-        requested_steps = [MASK_TASK_YOLO]
-        if self._dataset_projection == _PROJECTION_EQUIRECT and self.run_stitch_cb.isChecked():
-            requested_steps.append(MASK_TASK_STITCH)
-        if self.run_overexp_cb.isChecked():
-            requested_steps.append(MASK_TASK_OVEREXPOSURE)
-        if self.run_custom_cb.isChecked():
-            requested_steps.append(MASK_TASK_CUSTOM)
-        return requested_steps
+        job_path = jobs_dir(scene) / "dataset_sync_masks_job.json"
+        write_dataset_job(job_path, payload)
+        return "dataset_mask_paths", dataset_app_job(payload, job_path)
 
     def _command_from_mask_spec(self, spec: MaskCommandSpec) -> list[str]:
-        projection = spec.projection or self._dataset_projection
         if spec.command == MASK_COMMAND_YOLO:
-            return self._build_yolo_cmd(projection=projection, image_list=spec.image_list)
+            return self._build_yolo_cmd(projection=spec.projection, image_list=spec.image_list)
         if spec.command == MASK_COMMAND_INIT:
             return self._build_init_masks_cmd(image_list=spec.image_list)
         if spec.command == MASK_COMMAND_STITCH:
@@ -249,17 +249,58 @@ class DatasetMaskStep(MaskStep):
     def _dataset_root(self) -> Path:
         return Path(self._dataset_root_provider())
 
-    def _preview_uses_sfm_masks(self) -> bool:
-        return hasattr(self, "dataset_mask_mode_combo") and self.mask_mode() == DATASET_MASK_CONVERT_SFM
+    def _source_images_dir(self) -> Path:
+        if self._source_images_dir_provider is not None:
+            return Path(self._source_images_dir_provider())
+        if self.scene_dir:
+            return scene_images_dir(Path(self.scene_dir))
+        return Path()
+
+    def _source_masks_dir(self) -> Path:
+        if self._source_masks_dir_provider is not None:
+            return Path(self._source_masks_dir_provider())
+        if self.scene_dir:
+            return scene_masks_dir(Path(self.scene_dir))
+        return Path()
+
+    def generated_source_masks_dir(self) -> Path:
+        if self._generated_source_masks_dir_provider is not None:
+            return Path(self._generated_source_masks_dir_provider())
+        if self.scene_dir:
+            return step4_meta_dir(Path(self.scene_dir)) / "dataset_masks" / "training_source_masks"
+        return Path()
+
+    def writes_dataset_masks_from_source(self) -> bool:
+        return self.mask_mode() in {DATASET_MASK_CONVERT_SFM, DATASET_MASK_GENERATE_TRAINING}
+
+    def source_mask_dir_for_dataset(self, *, require_existing: bool = True) -> Path | None:
+        mode = self.mask_mode()
+        if mode == DATASET_MASK_CONVERT_SFM:
+            path = self._source_masks_dir()
+        elif mode == DATASET_MASK_GENERATE_TRAINING:
+            path = self.generated_source_masks_dir()
+        else:
+            return None
+        if require_existing and not path.is_dir():
+            return None
+        return path
+
+    def _mode_uses_source_images(self) -> bool:
+        if not hasattr(self, "dataset_mask_mode_combo"):
+            return True
+        return self.mask_mode() in {DATASET_MASK_CONVERT_SFM, DATASET_MASK_GENERATE_TRAINING}
 
     def _images_dir_for_scene(self, _scene: Path) -> Path:
-        if self._preview_uses_sfm_masks():
-            return scene_images_dir(_scene)
+        if self._mode_uses_source_images():
+            return self._source_images_dir()
         return self._dataset_root() / "images"
 
     def _masks_dir_for_scene(self, _scene: Path) -> Path:
-        if self._preview_uses_sfm_masks():
-            return scene_masks_dir(_scene)
+        mode = self.mask_mode() if hasattr(self, "dataset_mask_mode_combo") else DATASET_MASK_CONVERT_SFM
+        if mode == DATASET_MASK_CONVERT_SFM:
+            return self._source_masks_dir()
+        if mode == DATASET_MASK_GENERATE_TRAINING:
+            return self.generated_source_masks_dir()
         return self._dataset_root() / "masks"
 
     def _projection_key_for_image(self, image_path: Path) -> str:
@@ -302,6 +343,9 @@ class DatasetMaskStep(MaskStep):
         return self._with_dataset_mask_settings(super()._mask_settings_snapshot())
 
     def _sync_projection_from_project(self, *, preserve_user_quality: bool = False) -> None:
+        if self._mode_uses_source_images():
+            super()._sync_projection_from_project(preserve_user_quality=preserve_user_quality)
+            return
         self._set_projection(self._dataset_projection, sync_yolo_quality=not preserve_user_quality)
         self._projection_mixed = False
         self._projection_source = "dataset"
@@ -359,6 +403,9 @@ class DatasetMaskStep(MaskStep):
             "mode": self.mask_mode(),
             "dataset_root": _scene_relative_or_path(scene, self._dataset_root()),
             "projection": self._dataset_projection,
+            "source_images_dir": _scene_relative_or_path(scene, self._source_images_dir()),
+            "source_masks_dir": _scene_relative_or_path(scene, self._source_masks_dir()),
+            "generated_source_masks_dir": _scene_relative_or_path(scene, self.generated_source_masks_dir()),
         }
         return effective
 
@@ -395,6 +442,8 @@ class DatasetMaskStep(MaskStep):
         self._sync_preview_messages_for_mode()
         self._sync_preview_roots_for_mode()
         self._sync_preview_actions_for_mode()
+        self._sync_dataset_generation_controls_for_mode()
+        self._sync_projection_from_project(preserve_user_quality=True)
         self._update_task_controls()
         self._update_ready_status()
 
@@ -418,24 +467,48 @@ class DatasetMaskStep(MaskStep):
         self.mask_preview.reprocess_current_btn.setVisible(can_save_reprocess)
         self.mask_preview.reprocess_current_btn.setEnabled(can_save_reprocess)
 
+    def _sync_dataset_generation_controls_for_mode(self) -> None:
+        if not hasattr(self, "dataset_mask_rebuild_all_cb"):
+            return
+        generate = self.mask_mode() == DATASET_MASK_GENERATE_TRAINING
+        self.dataset_mask_rebuild_all_cb.setVisible(generate)
+        self.dataset_mask_rebuild_all_cb.setEnabled(generate)
+        if self.dataset_mask_rebuild_all_label is not None:
+            self.dataset_mask_rebuild_all_label.setVisible(generate)
+
+    def _update_task_controls(self) -> None:
+        super()._update_task_controls()
+        if not hasattr(self, "dataset_mask_mode_combo"):
+            return
+        generate = self.mask_mode() == DATASET_MASK_GENERATE_TRAINING
+        self.mask_scope_combo.setVisible(False)
+        if getattr(self, "mask_scope_row_label", None) is not None:
+            self.mask_scope_row_label.setVisible(False)
+        self._sync_dataset_generation_controls_for_mode()
+        self.mask_settings_tabs.setEnabled(generate)
+        self.run_stitch_cb.setEnabled(generate and self.run_stitch_cb.isEnabled())
+        self.run_overexp_cb.setEnabled(generate)
+        self.run_custom_cb.setEnabled(generate)
+        self.custom_mask_browse_btn.setEnabled(generate)
+        self.custom_mask_clear_btn.setEnabled(generate and bool(self._custom_mask_path_text()))
+
     def _sync_preview_messages_for_mode(self) -> None:
         if not hasattr(self, "mask_preview"):
             return
         mode = self.mask_mode() if hasattr(self, "dataset_mask_mode_combo") else DATASET_MASK_GENERATE_TRAINING
-        if mode == DATASET_MASK_CONVERT_SFM:
+        if mode in {DATASET_MASK_CONVERT_SFM, DATASET_MASK_GENERATE_TRAINING}:
             self.mask_preview.set_empty_messages(
                 no_scene=i18n.t("MASK_PREVIEW_NO_SCENE_HELP"),
-                empty=i18n.t("MASK_PREVIEW_EMPTY_HELP"),
+                empty=i18n.t(
+                    "DATASET_MASK_PREVIEW_GENERATE_EMPTY"
+                    if mode == DATASET_MASK_GENERATE_TRAINING
+                    else "MASK_PREVIEW_EMPTY_HELP"
+                ),
             )
             return
-        empty_key = (
-            "DATASET_MASK_PREVIEW_GENERATE_EMPTY"
-            if mode == DATASET_MASK_GENERATE_TRAINING
-            else "DATASET_MASK_PREVIEW_EMPTY"
-        )
         self.mask_preview.set_empty_messages(
             no_scene=i18n.t("DATASET_MASK_PREVIEW_NO_DATASET"),
-            empty=i18n.t(empty_key),
+            empty=i18n.t("DATASET_MASK_PREVIEW_EMPTY"),
         )
 
 

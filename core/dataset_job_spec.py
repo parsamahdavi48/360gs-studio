@@ -22,6 +22,7 @@ JOB_KIND_METASHAPE_NERF = "metashape_nerf_dataset"
 JOB_KIND_COLMAP_NERFSTUDIO = "colmap_nerfstudio_dataset"
 JOB_KIND_REALITYSCAN_LFS_COLMAP = "realityscan_lfs_colmap"
 JOB_KIND_ATTACH_DATASET_MASKS = "attach_dataset_masks"
+JOB_KIND_SYNC_DATASET_MASKS = "sync_dataset_masks"
 
 
 def metashape_colmap_job(
@@ -171,6 +172,23 @@ def attach_dataset_masks_job(
     }
 
 
+def sync_dataset_masks_job(
+    *,
+    dataset_root: str | Path,
+    source_masks_dir: str | Path,
+    transforms_json: str | Path | None = None,
+    attach: bool = True,
+) -> dict[str, Any]:
+    return {
+        "schema_version": DATASET_JOB_SCHEMA_VERSION,
+        "kind": JOB_KIND_SYNC_DATASET_MASKS,
+        "dataset_root": str(dataset_root),
+        "source_masks_dir": str(source_masks_dir),
+        "transforms_json": str(transforms_json) if transforms_json else "",
+        "attach": bool(attach),
+    }
+
+
 def write_dataset_job(path: str | Path, payload: dict[str, Any]) -> Path:
     job_path = Path(path)
     validate_dataset_job_payload(payload)
@@ -200,6 +218,7 @@ def validate_dataset_job_payload(payload: dict[str, Any]) -> None:
             JOB_KIND_COLMAP_NERFSTUDIO,
             JOB_KIND_REALITYSCAN_LFS_COLMAP,
             JOB_KIND_ATTACH_DATASET_MASKS,
+            JOB_KIND_SYNC_DATASET_MASKS,
         },
         label="dataset",
     )
@@ -211,6 +230,8 @@ def validate_dataset_job_payload(payload: dict[str, Any]) -> None:
         _validate_realityscan_lfs_colmap_job(data)
     elif kind == JOB_KIND_ATTACH_DATASET_MASKS:
         _validate_attach_dataset_masks_job(data)
+    elif kind == JOB_KIND_SYNC_DATASET_MASKS:
+        _validate_sync_dataset_masks_job(data)
 
 
 def _validate_metashape_dataset_job(payload: Mapping[str, Any]) -> None:
@@ -255,3 +276,10 @@ def _validate_attach_dataset_masks_job(payload: Mapping[str, Any]) -> None:
     require_str(payload, "transforms_json", label="dataset", allow_empty=True)
     require_str(payload, "masks_dir", label="dataset", allow_empty=True)
     require_bool(payload, "clear", label="dataset")
+
+
+def _validate_sync_dataset_masks_job(payload: Mapping[str, Any]) -> None:
+    require_str(payload, "dataset_root", label="dataset")
+    require_str(payload, "source_masks_dir", label="dataset")
+    require_str(payload, "transforms_json", label="dataset", allow_empty=True)
+    require_bool(payload, "attach", label="dataset")

@@ -12,10 +12,12 @@ from core.dataset_job_spec import (
     JOB_KIND_METASHAPE_COLMAP,
     JOB_KIND_METASHAPE_NERF,
     JOB_KIND_REALITYSCAN_LFS_COLMAP,
+    JOB_KIND_SYNC_DATASET_MASKS,
     load_dataset_job,
     validate_dataset_job_payload,
 )
 from core.dataset_mask_paths import attach_nerf_mask_paths, clear_nerf_mask_paths
+from core.dataset_writer_colmap import replace_file_with_link_or_copy
 from core.metashape_colmap_dataset import export_metashape_colmap_dataset
 from core.metashape_nerf_dataset import export_metashape_nerf_dataset
 from core.realityscan_to_lfs_colmap import convert as convert_realityscan_to_lfs_colmap
@@ -62,6 +64,8 @@ def run_dataset_job_payload(job: dict, *, cancel_event: CancellationToken | None
         _run_realityscan_lfs_colmap(job, cancel_event=cancel_event)
     elif kind == JOB_KIND_ATTACH_DATASET_MASKS:
         _run_attach_dataset_masks(job, cancel_event=cancel_event)
+    elif kind == JOB_KIND_SYNC_DATASET_MASKS:
+        _run_sync_dataset_masks(job, cancel_event=cancel_event)
     else:
         raise ValueError(f"Unsupported dataset job kind: {kind}")
 
@@ -89,7 +93,7 @@ def _run_metashape_colmap(job: dict, *, cancel_event: CancellationToken | None =
         final_orientation=str(job.get("final_orientation") or "none"),
         progress_callback=_progress_log_callback(cancel_event),
     )
-    print(f"Saved mixed Metashape COLMAP dataset: {result.output_dir}", flush=True)
+    print(f"Saved Metashape COLMAP dataset: {result.output_dir}", flush=True)
     print(f"Images: {result.image_count}", flush=True)
     print(f"Cameras: {result.camera_count}", flush=True)
     print(f"Actions: {json.dumps(result.action_counts, sort_keys=True)}", flush=True)
@@ -117,7 +121,7 @@ def _run_metashape_nerf(job: dict, *, cancel_event: CancellationToken | None = N
         write_masks=bool(job.get("write_masks", True)),
         progress_callback=_progress_log_callback(cancel_event),
     )
-    print(f"Saved mixed Metashape NeRF dataset: {result.output_dir}", flush=True)
+    print(f"Saved Metashape NeRF dataset: {result.output_dir}", flush=True)
     print(f"transforms.json: {result.transforms_json}", flush=True)
     if result.pointcloud:
         print(f"pointcloud.ply: {result.pointcloud}", flush=True)
@@ -195,3 +199,53 @@ def _run_attach_dataset_masks(job: dict, *, cancel_event: CancellationToken | No
     print(f"Masks: {result.mask_path_count}", flush=True)
     print(f"Missing masks: {result.missing_mask_count}", flush=True)
     raise_if_cancelled(cancel_event)
+
+
+def _run_sync_dataset_masks(job: dict, *, cancel_event: CancellationToken | None = None) -> None:
+    raise_if_cancelled(cancel_event)
+    dataset_root = Path(str(job["dataset_root"]))
+    source_masks = Path(str(job["source_masks_dir"]))
+    if not source_masks.is_dir():
+        raise FileNotFoundError(f"Masks folder not found: {source_masks}")
+    output_masks = dataset_root / "masks"
+    count = _sync_mask_tree(source_masks, output_masks, cancel_event=cancel_event)
+    print(f"Synced dataset masks: {count}", flush=True)
+
+    if bool(job.get("attach", True)):
+        transforms_json = Path(str(job["transforms_json"])) if str(job.get("transforms_json") or "") else None
+        result = attach_nerf_mask_paths(
+            dataset_root=dataset_root,
+            transforms_json=transforms_json,
+            masks_dir=output_masks,
+        )
+        print(f"Attached dataset mask paths: {result.transforms_json}", flush=True)
+        print(f"Frames: {result.frame_count}", flush=True)
+        print(f"Masks: {result.mask_path_count}", flush=True)
+        print(f"Missing masks: {result.missing_mask_count}", flush=True)
+    raise_if_cancelled(cancel_event)
+
+
+def _sync_mask_tree(
+    source_masks: Path,
+    output_masks: Path,
+    *,
+    cancel_event: CancellationToken | None = None,
+) -> int:
+    source_files = sorted(
+        (source_file for source_file in source_masks.rglob("*") if source_file.is_file()),
+        key=lambda path: str(path).lower(),
+    )
+    total = len(source_files)
+    if total <= 0:
+        output_masks.mkdir(parents=True, exist_ok=True)
+        print("[progress] 0/0", flush=True)
+        return 0
+    print(f"[progress] 0/{total}", flush=True)
+    copied = 0
+    for source_file in source_files:
+        raise_if_cancelled(cancel_event)
+        rel = source_file.relative_to(source_masks)
+        replace_file_with_link_or_copy(source_file, output_masks / rel)
+        copied += 1
+        print(f"[progress] {copied}/{total}", flush=True)
+    return copied

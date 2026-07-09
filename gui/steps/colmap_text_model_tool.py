@@ -39,6 +39,7 @@ from core.scene_layout import (
     scene_images_dir,
     scene_masks_dir,
     scene_output_dir,
+    step4_meta_dir,
 )
 from core.workflow_artifacts import (
     DATASET_KIND_COLMAP_DATASET,
@@ -104,6 +105,9 @@ class ColmapTextModelTool(BaseStepWidget):
         self._dataset_mask_step = DatasetMaskStep(
             self.base_dir,
             dataset_root_provider=self._output_dir,
+            source_images_dir_provider=self._images_dir,
+            source_masks_dir_provider=self._masks_dir,
+            generated_source_masks_dir_provider=self._dataset_training_source_masks_dir,
             link_mask_paths=False,
             mode_tip_keys={
                 DATASET_MASK_CONVERT_SFM: "COLMAP_TEXT_MASK_MODE_CONVERT_SFM",
@@ -319,18 +323,12 @@ class ColmapTextModelTool(BaseStepWidget):
         self._dataset_mask_step.set_dataset_projection("normal")
 
     def primary_action_text(self) -> str:
-        if self._mask_tab_selected() and self._dataset_mask_step is not None:
-            return self._dataset_mask_step.primary_action_text()
         return i18n.t("DATASET_RUN_COLMAP_TEXT")
 
     def primary_action_tooltip(self) -> str:
-        if self._mask_tab_selected() and self._dataset_mask_step is not None:
-            return self._dataset_mask_step.primary_action_tooltip()
         return i18n.tip("DATASET_RUN_COLMAP_TEXT")
 
     def primary_action_enabled(self) -> bool:
-        if self._mask_tab_selected() and self._dataset_mask_step is not None:
-            return self._dataset_mask_step.primary_action_enabled()
         return (
             bool(self.scene_dir)
             and self._images_dir().is_dir()
@@ -339,24 +337,27 @@ class ColmapTextModelTool(BaseStepWidget):
         )
 
     def build_commands(self) -> StepCommandQueue:
-        if self._mask_tab_selected() and self._dataset_mask_step is not None:
-            self._sync_mask_settings_context()
-            return self._dataset_mask_step.build_commands()
-
         images = self._images_dir()
         masks = self._masks_dir()
         xml = self._xml_path()
         ply = self._ply_path()
         output = self._output_dir()
         write_source_masks = self._writes_source_masks()
-        self._validate_inputs(images, masks, xml, ply, output, use_source_masks=write_source_masks)
+        self._validate_inputs(
+            images,
+            masks,
+            xml,
+            ply,
+            output,
+            use_source_masks=self._dataset_mask_mode() == DATASET_MASK_CONVERT_SFM,
+        )
         self._validate_output_options()
 
         if not self._prepare_output_dir(output, preserve_masks=self._preserves_output_masks()):
             return []
 
         views = self.view_config.collect_views(include_disabled=True)
-        mask_dir = masks if write_source_masks and masks.is_dir() else None
+        mask_dir = self._dataset_mask_source_dir_for_job() if write_source_masks else None
         job_path = jobs_dir(Path(self.scene_dir)) / "metashape_colmap_job.json"
         payload = metashape_colmap_job(
             scene_dir=Path(self.scene_dir),
@@ -375,10 +376,11 @@ class ColmapTextModelTool(BaseStepWidget):
             final_orientation=self._final_orientation(),
         )
         write_dataset_job(job_path, payload)
-        commands: StepCommandQueue = [("metashape_colmap", dataset_app_job(payload, job_path))]
+        commands: StepCommandQueue = []
         if self._dataset_mask_step is not None:
             self._sync_mask_settings_context()
-            commands.extend(self._dataset_mask_step.build_followup_commands(require_existing_images=False))
+            commands.extend(self._dataset_mask_step.build_source_mask_commands())
+        commands.append(("metashape_colmap", dataset_app_job(payload, job_path)))
         return commands
 
     def _validate_inputs(
@@ -457,10 +459,24 @@ class ColmapTextModelTool(BaseStepWidget):
         return self._dataset_mask_step.mask_mode()
 
     def _writes_source_masks(self) -> bool:
-        return self._dataset_mask_mode() == DATASET_MASK_CONVERT_SFM
+        return self._dataset_mask_mode() in {DATASET_MASK_CONVERT_SFM, DATASET_MASK_GENERATE_TRAINING}
 
     def _preserves_output_masks(self) -> bool:
         return self._dataset_mask_mode() == DATASET_MASK_REUSE_EXISTING
+
+    def _dataset_mask_source_dir_for_job(self) -> Path | None:
+        if self._dataset_mask_step is None:
+            masks = self._masks_dir()
+            return masks if masks.is_dir() else None
+        self._sync_mask_settings_context()
+        return self._dataset_mask_step.source_mask_dir_for_dataset(
+            require_existing=self._dataset_mask_mode() != DATASET_MASK_GENERATE_TRAINING
+        )
+
+    def _dataset_training_source_masks_dir(self) -> Path:
+        if not self.scene_dir:
+            raise ValueError(i18n.t("SCENE_REQUIRED_ACTION_HINT"))
+        return step4_meta_dir(Path(self.scene_dir)) / "dataset_masks" / "metashape_colmap_training_source_masks"
 
     def phase_display_name(self, phase: str) -> str:
         if phase == "metashape_colmap":

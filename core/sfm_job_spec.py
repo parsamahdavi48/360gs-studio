@@ -35,6 +35,7 @@ def colmap_mixed_project_job(
     workers: str,
     remap_cache_limit: str,
     rig_name: str = "rig1",
+    source_masks_dir: str | Path | None = None,
 ) -> dict[str, Any]:
     return {
         "schema_version": SFM_JOB_SCHEMA_VERSION,
@@ -52,6 +53,7 @@ def colmap_mixed_project_job(
         "workers": str(workers),
         "remap_cache_limit": str(remap_cache_limit),
         "rig_name": str(rig_name),
+        "source_masks_dir": str(source_masks_dir) if source_masks_dir else "",
     }
 
 
@@ -84,6 +86,8 @@ def validate_sfm_job_payload(payload: dict[str, Any]) -> None:
 def _validate_colmap_mixed_project_job(payload: Mapping[str, Any]) -> None:
     for key in ("scene_dir", "output_dir", "output_format", "output_bit_depth", "workers", "remap_cache_limit", "rig_name"):
         require_str(payload, key, label="SfM")
+    if "source_masks_dir" in payload:
+        require_str(payload, "source_masks_dir", label="SfM", allow_empty=True)
     require_views(payload, label="SfM")
     require_finite_float(payload, "output_scale", label="SfM", min_value=0.0, max_value=1.0, min_inclusive=False)
     require_int_range(payload, "jpg_quality", label="SfM", min_value=1, max_value=100)

@@ -52,20 +52,14 @@ class Step4ActivationMixin:
         window.refresh()
 
     def primary_action_text(self) -> str:
-        if self._dataset_mask_tab_selected() and self._dataset_mask_step is not None:
-            return self._dataset_mask_step.primary_action_text()
         return i18n.t("RUN")
 
     def primary_action_tooltip(self) -> str:
-        if self._dataset_mask_tab_selected() and self._dataset_mask_step is not None:
-            return self._dataset_mask_step.primary_action_tooltip()
         if self._apriltag_tab_selected():
             return i18n.tip("APRILTAG_TAB_PRIMARY_ACTION")
         return i18n.tip("RUN_CUBEMAP")
 
     def primary_action_enabled(self) -> bool:
-        if self._dataset_mask_tab_selected() and self._dataset_mask_step is not None:
-            return self._dataset_mask_step.primary_action_enabled()
         if self._apriltag_tab_selected():
             return False
         selected = False
