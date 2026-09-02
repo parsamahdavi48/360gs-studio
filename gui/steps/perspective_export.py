@@ -32,16 +32,33 @@ from core.image_io import imread_unicode
 from gs360studio.domain.models import ViewSpec, atomic_write_json, cubemap_view_specs, grid_view_specs
 from gs360studio.engine.perspective_export import estimate_batch_size
 from gs360studio.engine.projection import ProjectionMapCache, project_equirectangular
-from gs360studio.platform.job_store import recover_interrupted_jobs
+from gs360studio.platform.job_store import list_jobs, recover_interrupted_jobs
 from gs360studio.platform.project_store import migrate_legacy_project
+from gui import i18n
 from gui.common import dialogs
 from gui.common.browse_widget import BrowseWidget
+from gui.common.icons import folder_icon
 from gui.common.runner_types import StepCommandQueue
 from gui.perspective.globe_widget import ViewGlobeWidget
 from gui.steps.base_step import BaseStepWidget
 
 _PROGRESS_RE = re.compile(r"^PROGRESS:(\d+)/(\d+)$")
-_COLUMNS = ("On", "Name", "Yaw", "Pitch", "Roll", "H-FOV", "V-FOV", "Width", "Height")
+_IMAGE_SUFFIXES = frozenset({".png", ".jpg", ".jpeg", ".tif", ".tiff", ".webp"})
+_COLUMNS = tuple(
+    i18n.t(key)
+    for key in (
+        "PERSPECTIVE_COLUMN_ON",
+        "PERSPECTIVE_COLUMN_NAME",
+        "PERSPECTIVE_COLUMN_YAW",
+        "PERSPECTIVE_COLUMN_PITCH",
+        "PERSPECTIVE_COLUMN_ROLL",
+        "PERSPECTIVE_COLUMN_HFOV",
+        "PERSPECTIVE_COLUMN_VFOV",
+        "PERSPECTIVE_COLUMN_WIDTH",
+        "PERSPECTIVE_COLUMN_HEIGHT",
+        "PERSPECTIVE_COLUMN_INTERPOLATION",
+    )
+)
 
 
 class PerspectiveExportStep(BaseStepWidget):
@@ -53,6 +70,10 @@ class PerspectiveExportStep(BaseStepWidget):
         self._preview_cache = ProjectionMapCache(8)
         self._source_duration_sec = 0.0
         self._source_frame_count = 0
+        self._auto_input_path = ""
+        self._auto_output_path = ""
+        self._resume_job_id = ""
+        self._recoverable_job = None
         self._build_ui()
         self._populate_table()
 
@@ -64,16 +85,22 @@ class PerspectiveExportStep(BaseStepWidget):
         paths = QWidget()
         form = QFormLayout(paths)
         self.input_browse = BrowseWidget(mode="file", filter_str="Media (*.mp4 *.mov *.mkv *.avi *.png *.jpg *.jpeg *.tif *.tiff *.webp);;All files (*.*)")
+        self.input_folder_button = self.input_browse.add_icon_button(
+            folder_icon(),
+            i18n.t("PERSPECTIVE_CHOOSE_IMAGE_FOLDER"),
+            self._choose_input_folder,
+            accessible_name=i18n.t("PERSPECTIVE_CHOOSE_IMAGE_FOLDER"),
+        )
         self.output_browse = BrowseWidget(mode="dir")
-        form.addRow("Input media", self.input_browse)
-        form.addRow("Output folder", self.output_browse)
+        form.addRow(i18n.t("PERSPECTIVE_INPUT_MEDIA"), self.input_browse)
+        form.addRow(i18n.t("PERSPECTIVE_OUTPUT_FOLDER"), self.output_browse)
         root.addWidget(paths)
 
         options = QHBoxLayout()
         self.format_combo = QComboBox()
-        self.format_combo.addItem("PNG sequence", "png")
-        self.format_combo.addItem("JPEG sequence", "jpeg")
-        self.format_combo.addItem("H.265 / HEVC video", "video")
+        self.format_combo.addItem(i18n.t("PERSPECTIVE_FORMAT_PNG"), "png")
+        self.format_combo.addItem(i18n.t("PERSPECTIVE_FORMAT_JPEG"), "jpeg")
+        self.format_combo.addItem(i18n.t("PERSPECTIVE_FORMAT_HEVC"), "video")
         self.interval_spin = QDoubleSpinBox()
         self.interval_spin.setRange(0.01, 3600.0)
         self.interval_spin.setDecimals(2)
@@ -81,11 +108,15 @@ class PerspectiveExportStep(BaseStepWidget):
         self.interval_spin.setSuffix(" s")
         self.batch_spin = QSpinBox()
         self.batch_spin.setRange(0, 32)
-        self.batch_spin.setSpecialValueText("Auto")
+        self.batch_spin.setSpecialValueText(i18n.t("AUTO"))
         self.nvenc_check = QCheckBox("NVENC")
-        self.rig_check = QCheckBox("COLMAP rig")
-        self.overwrite_check = QCheckBox("Replace existing export")
-        for label, widget in (("Format", self.format_combo), ("Interval", self.interval_spin), ("Batch", self.batch_spin)):
+        self.rig_check = QCheckBox(i18n.t("PERSPECTIVE_COLMAP_RIG"))
+        self.overwrite_check = QCheckBox(i18n.t("PERSPECTIVE_REPLACE_EXPORT"))
+        for label, widget in (
+            (i18n.t("PERSPECTIVE_FORMAT"), self.format_combo),
+            (i18n.t("PERSPECTIVE_INTERVAL"), self.interval_spin),
+            (i18n.t("PERSPECTIVE_BATCH"), self.batch_spin),
+        ):
             options.addWidget(QLabel(label))
             options.addWidget(widget)
         options.addWidget(self.nvenc_check)
@@ -96,18 +127,22 @@ class PerspectiveExportStep(BaseStepWidget):
 
         preset_row = QHBoxLayout()
         for label, callback in (
-            ("Cubemap", self._apply_cubemap),
-            ("8-view ring", self._apply_ring),
-            ("Add view", self._add_view),
-            ("Remove view", self._remove_view),
-            ("Save profile", self._save_profile),
-            ("Load profile", self._load_profile),
-            ("Refresh preview", self._refresh_preview),
+            (i18n.t("PERSPECTIVE_CUBEMAP"), self._apply_cubemap),
+            (i18n.t("PERSPECTIVE_RING"), self._apply_ring),
+            (i18n.t("PERSPECTIVE_ADD_VIEW"), self._add_view),
+            (i18n.t("PERSPECTIVE_REMOVE_VIEW"), self._remove_view),
+            (i18n.t("PERSPECTIVE_SAVE_PROFILE"), self._save_profile),
+            (i18n.t("PERSPECTIVE_LOAD_PROFILE"), self._load_profile),
+            (i18n.t("PERSPECTIVE_REFRESH_PREVIEW"), self._refresh_preview),
         ):
             button = QPushButton(label)
             button.clicked.connect(callback)
             preset_row.addWidget(button)
         preset_row.addStretch()
+        self.restore_job_button = QPushButton(i18n.t("PERSPECTIVE_RESTORE_JOB"))
+        self.restore_job_button.setVisible(False)
+        self.restore_job_button.clicked.connect(self._restore_interrupted_job)
+        preset_row.addWidget(self.restore_job_button)
         root.addLayout(preset_row)
 
         split = QSplitter(Qt.Horizontal)
@@ -128,7 +163,7 @@ class PerspectiveExportStep(BaseStepWidget):
         right = QWidget()
         right_layout = QVBoxLayout(right)
         right_layout.setContentsMargins(0, 0, 0, 0)
-        self.preview_label = QLabel("Choose an image or video, then refresh the preview.")
+        self.preview_label = QLabel(i18n.t("PERSPECTIVE_PREVIEW_PROMPT"))
         self.preview_label.setObjectName("workPane")
         self.preview_label.setMinimumSize(360, 240)
         self.preview_label.setAlignment(Qt.AlignCenter)
@@ -156,26 +191,62 @@ class PerspectiveExportStep(BaseStepWidget):
 
     def set_scene_dir(self, path: str) -> None:
         super().set_scene_dir(path)
+        self._sync_scene_state()
+
+    def on_activated(self) -> None:
+        self._sync_scene_state()
+
+    def _sync_scene_state(self) -> None:
+        previous_auto_input = self._auto_input_path
+        previous_auto_output = self._auto_output_path
+        path = self.scene_dir
         if not path:
+            self._recoverable_job = None
+            self.restore_job_button.setVisible(False)
             return
         scene = Path(path)
-        if not self.output_browse.text():
-            self.output_browse.set_text(str(scene / "output" / "perspective"))
+        output = str(scene / "output" / "perspective")
+        if not self.output_browse.text() or self.output_browse.text() == previous_auto_output:
+            self._auto_output_path = output
+            self.output_browse.set_text(output)
         try:
-            _manifest, report = migrate_legacy_project(scene)
+            manifest, report = migrate_legacy_project(scene)
             recovered = recover_interrupted_jobs(scene)
+            candidate = self._default_project_source(scene, manifest.sources)
+            if candidate and (not self.input_browse.text() or self.input_browse.text() == previous_auto_input):
+                self._auto_input_path = str(candidate)
+                self.input_browse.set_text(self._auto_input_path)
+            jobs = list_jobs(scene)
+            resolved_job_ids = {
+                dependency_id
+                for job in jobs
+                if job.job_type == "perspective-export" and job.status == "completed"
+                for dependency_id in job.dependency_ids
+            }
+            interrupted = [
+                job
+                for job in jobs
+                if job.job_type == "perspective-export"
+                and job.status == "interrupted"
+                and job.job_id not in resolved_job_ids
+            ]
+            self._recoverable_job = max(interrupted, key=lambda job: job.created_at) if interrupted else None
+            self.restore_job_button.setVisible(self._recoverable_job is not None)
             if report.migrated or recovered:
                 self.estimate_label.setText(
-                    f"Project metadata ready. Migrated legacy scene: {report.migrated}; recovered jobs: {len(recovered)}."
+                    i18n.t("PERSPECTIVE_PROJECT_READY").format(
+                        migrated=report.migrated,
+                        recovered=len(recovered),
+                    )
                 )
         except (OSError, ValueError) as exc:
-            self.estimate_label.setText(f"Project metadata warning: {exc}")
+            self.estimate_label.setText(i18n.t("PERSPECTIVE_PROJECT_WARNING").format(error=exc))
 
     def primary_action_text(self) -> str:
-        return "Export Perspective Views"
+        return i18n.t("PERSPECTIVE_EXPORT_ACTION")
 
     def primary_action_tooltip(self) -> str:
-        return "Export all enabled views with a bounded shared decode pipeline."
+        return i18n.t("PERSPECTIVE_EXPORT_TOOLTIP")
 
     def primary_action_enabled(self) -> bool:
         return bool(self.input_browse.text() and self.output_browse.text() and any(view.enabled for view in self._views))
@@ -209,6 +280,8 @@ class PerspectiveExportStep(BaseStepWidget):
             "colmap_rig": self.rig_check.isChecked(),
             "overwrite": self.overwrite_check.isChecked(),
         }
+        if self._resume_job_id:
+            payload["resume_job_id"] = self._resume_job_id
         return [("perspective_export", perspective_app_job(payload))]
 
     def on_line(self, line: str) -> tuple[int, int] | None:
@@ -218,7 +291,12 @@ class PerspectiveExportStep(BaseStepWidget):
         return int(match.group(1)), int(match.group(2))
 
     def phase_display_name(self, _phase: str) -> str:
-        return "Perspective export"
+        return i18n.t("PERSPECTIVE_TITLE")
+
+    def on_queue_finished(self, success: bool) -> None:
+        if success:
+            self._resume_job_id = ""
+            self._sync_scene_state()
 
     def _populate_table(self, selected: int | None = None) -> None:
         self._updating_table = True
@@ -238,6 +316,7 @@ class PerspectiveExportStep(BaseStepWidget):
                     QTableWidgetItem("" if view.vfov_deg is None else f"{view.vfov_deg:g}"),
                     QTableWidgetItem(str(view.width)),
                     QTableWidgetItem(str(view.height)),
+                    QTableWidgetItem(view.interpolation),
                 )
                 for column, item in enumerate(values):
                     self.table.setItem(row, column, item)
@@ -269,7 +348,7 @@ class PerspectiveExportStep(BaseStepWidget):
             vfov_deg=float(text(6)) if text(6) else None,
             width=int(text(7)),
             height=int(text(8)),
-            interpolation=previous.interpolation,
+            interpolation=text(9) or previous.interpolation,
         )
 
     def _on_cell_changed(self, row: int, _column: int) -> None:
@@ -278,7 +357,7 @@ class PerspectiveExportStep(BaseStepWidget):
         try:
             self._views[row] = self._view_from_row(row)
         except ValueError as exc:
-            self.estimate_label.setText(f"Invalid view: {exc}")
+            self.estimate_label.setText(i18n.t("PERSPECTIVE_INVALID_VIEW").format(error=exc))
             return
         self.globe.set_views(self._views, row)
         self._update_estimate()
@@ -307,7 +386,13 @@ class PerspectiveExportStep(BaseStepWidget):
 
     def _add_view(self) -> None:
         index = len(self._views) + 1
-        self._views.append(ViewSpec(id=f"view_{index:02d}", name=f"View {index}", yaw_deg=(index - 1) * 45.0))
+        self._views.append(
+            ViewSpec(
+                id=f"view_{index:02d}",
+                name=i18n.t("PERSPECTIVE_VIEW_NAME").format(index=index),
+                yaw_deg=(index - 1) * 45.0,
+            )
+        )
         self._populate_table(len(self._views) - 1)
 
     def _remove_view(self) -> None:
@@ -345,12 +430,17 @@ class PerspectiveExportStep(BaseStepWidget):
             bytes_per_pixel = 0.45 if output_format == "jpeg" else 1.8
         storage_bytes = megapixels * 1_000_000 * max(0, source_frames) * bytes_per_pixel
         processing_seconds = megapixels * max(0, source_frames) / 120.0
-        storage_text = self._format_bytes(storage_bytes) if source_frames else "unknown storage"
-        time_text = self._format_seconds(processing_seconds) if source_frames else "unknown time"
+        storage_text = self._format_bytes(storage_bytes) if source_frames else i18n.t("PERSPECTIVE_UNKNOWN_STORAGE")
+        time_text = self._format_seconds(processing_seconds) if source_frames else i18n.t("PERSPECTIVE_UNKNOWN_TIME")
         self.estimate_label.setText(
-            f"{len(enabled)} enabled view(s) · {output_count or 'unknown'} output item(s) · about {storage_text} · "
-            f"about {time_text} · {megapixels:.1f} MP/source frame · {batches} shared decode batch(es). "
-            "Right-click a globe marker to enable or disable it; drag empty globe space to orbit."
+            i18n.t("PERSPECTIVE_ESTIMATE").format(
+                views=len(enabled),
+                outputs=output_count or i18n.t("PERSPECTIVE_UNKNOWN"),
+                storage=storage_text,
+                time=time_text,
+                megapixels=f"{megapixels:.1f}",
+                batches=batches,
+            )
         )
 
     @staticmethod
@@ -361,7 +451,7 @@ class PerspectiveExportStep(BaseStepWidget):
             if size < 1024.0 or unit == units[-1]:
                 return f"{size:.1f} {unit}"
             size /= 1024.0
-        return "unknown storage"
+        return i18n.t("PERSPECTIVE_UNKNOWN_STORAGE")
 
     @staticmethod
     def _format_seconds(value: float) -> str:
@@ -376,10 +466,11 @@ class PerspectiveExportStep(BaseStepWidget):
         self._source_duration_sec = 0.0
         self._source_frame_count = 0
         if path.is_dir():
-            suffixes = {".png", ".jpg", ".jpeg", ".tif", ".tiff", ".webp"}
-            self._source_frame_count = sum(1 for item in path.iterdir() if item.is_file() and item.suffix.lower() in suffixes)
+            self._source_frame_count = sum(
+                1 for item in path.iterdir() if item.is_file() and item.suffix.lower() in _IMAGE_SUFFIXES
+            )
             return
-        if path.suffix.lower() in {".png", ".jpg", ".jpeg", ".tif", ".tiff", ".webp"}:
+        if path.suffix.lower() in _IMAGE_SUFFIXES:
             self._source_frame_count = 1
             return
         capture = cv2.VideoCapture(str(path))
@@ -407,9 +498,16 @@ class PerspectiveExportStep(BaseStepWidget):
             self._source_frame_count = 0
         self._update_estimate()
         self.primary_action_state_changed.emit()
+        if value:
+            self._refresh_preview()
 
     def _load_preview_source(self):
         path = Path(self.input_browse.text())
+        if path.is_dir():
+            path = next(
+                (item for item in sorted(path.iterdir()) if item.is_file() and item.suffix.lower() in _IMAGE_SUFFIXES),
+                Path(),
+            )
         if not path.is_file():
             return None
         image = imread_unicode(path, cv2.IMREAD_COLOR)
@@ -433,7 +531,8 @@ class PerspectiveExportStep(BaseStepWidget):
         if self._preview_source is None:
             self._preview_source = self._load_preview_source()
         if self._preview_source is None:
-            self.preview_label.setText("Preview unavailable for this source.")
+            self.preview_label.clear()
+            self.preview_label.setText(i18n.t("PERSPECTIVE_PREVIEW_UNAVAILABLE"))
             return
         view = self._views[row]
         max_width, max_height = 900, 520
@@ -443,6 +542,45 @@ class PerspectiveExportStep(BaseStepWidget):
         rgb = cv2.cvtColor(projected, cv2.COLOR_BGR2RGB)
         image = QImage(rgb.data, rgb.shape[1], rgb.shape[0], rgb.shape[1] * 3, QImage.Format_RGB888).copy()
         self.preview_label.setPixmap(QPixmap.fromImage(image))
+
+    @staticmethod
+    def _default_project_source(scene: Path, sources: list[dict]) -> Path | None:
+        images = scene / "images"
+        if images.is_dir() and any(
+            item.is_file() and item.suffix.lower() in _IMAGE_SUFFIXES for item in images.iterdir()
+        ):
+            return images
+        for source in sources:
+            value = str(source.get("path") or "").strip()
+            if not value:
+                continue
+            candidate = Path(value)
+            if not candidate.is_absolute():
+                candidate = scene / candidate
+            if candidate.exists():
+                return candidate
+        return None
+
+    def _choose_input_folder(self) -> None:
+        start = self.input_browse.text() or self.scene_dir
+        path = dialogs.get_existing_directory(self, i18n.t("PERSPECTIVE_CHOOSE_IMAGE_FOLDER"), start)
+        if path:
+            self._auto_input_path = ""
+            self.input_browse.set_text(path)
+
+    def _restore_interrupted_job(self) -> None:
+        job = self._recoverable_job
+        if job is None:
+            return
+        try:
+            self._apply_configuration(job.configuration)
+        except (TypeError, ValueError) as exc:
+            QMessageBox.critical(self, i18n.t("PERSPECTIVE_INVALID_PROFILE"), str(exc))
+            return
+        self._resume_job_id = job.job_id
+        self.restore_job_button.setVisible(False)
+        self.estimate_label.setText(i18n.t("PERSPECTIVE_JOB_RESTORED"))
+        self.primary_action_state_changed.emit()
 
     def _profile_payload(self) -> dict:
         return {
@@ -460,30 +598,49 @@ class PerspectiveExportStep(BaseStepWidget):
 
     def _save_profile(self) -> None:
         start = str(Path(self.scene_dir) / "_360gs" / "profiles") if self.scene_dir else ""
-        path, _ = dialogs.get_save_file_name(self, "Save view profile", start, "JSON (*.json)")
+        path, _ = dialogs.get_save_file_name(
+            self,
+            i18n.t("PERSPECTIVE_SAVE_PROFILE"),
+            start,
+            "JSON (*.json)",
+        )
         if path:
             atomic_write_json(Path(path), self._profile_payload())
 
     def _load_profile(self) -> None:
         start = str(Path(self.scene_dir) / "_360gs" / "profiles") if self.scene_dir else ""
-        path, _ = dialogs.get_open_file_name(self, "Load view profile", start, "JSON (*.json)")
+        path, _ = dialogs.get_open_file_name(
+            self,
+            i18n.t("PERSPECTIVE_LOAD_PROFILE"),
+            start,
+            "JSON (*.json)",
+        )
         if not path:
             return
         try:
             payload = json.loads(Path(path).read_text(encoding="utf-8"))
             if int(payload.get("schema_version", 0)) != 1 or not isinstance(payload.get("views"), list):
                 raise ValueError("unsupported profile schema")
-            self._views = [ViewSpec.from_dict(item, index=index) for index, item in enumerate(payload["views"])]
-            self.input_browse.set_text(str(payload.get("input_path") or ""))
-            self.output_browse.set_text(str(payload.get("output_dir") or ""))
-            index = self.format_combo.findData(str(payload.get("output_format") or "png"))
-            if index >= 0:
-                self.format_combo.setCurrentIndex(index)
-            self.interval_spin.setValue(float(payload.get("frame_interval_sec") or 1.0))
-            self.batch_spin.setValue(int(payload.get("batch_size") or 0))
-            self.nvenc_check.setChecked(bool(payload.get("use_nvenc", False)))
-            self.rig_check.setChecked(bool(payload.get("colmap_rig", False)))
-            self.overwrite_check.setChecked(bool(payload.get("overwrite", False)))
-            self._populate_table(0)
+            self._apply_configuration(payload)
         except (OSError, ValueError, TypeError, json.JSONDecodeError) as exc:
-            QMessageBox.critical(self, "Invalid profile", str(exc))
+            QMessageBox.critical(self, i18n.t("PERSPECTIVE_INVALID_PROFILE"), str(exc))
+
+    def _apply_configuration(self, payload: dict) -> None:
+        views = payload.get("views")
+        if not isinstance(views, list):
+            raise ValueError("configuration requires a views list")
+        self._resume_job_id = ""
+        self._views = [ViewSpec.from_dict(item, index=index) for index, item in enumerate(views)]
+        self._auto_input_path = ""
+        self._auto_output_path = ""
+        self.input_browse.set_text(str(payload.get("input_path") or ""))
+        self.output_browse.set_text(str(payload.get("output_dir") or ""))
+        index = self.format_combo.findData(str(payload.get("output_format") or "png"))
+        if index >= 0:
+            self.format_combo.setCurrentIndex(index)
+        self.interval_spin.setValue(float(payload.get("frame_interval_sec") or 1.0))
+        self.batch_spin.setValue(int(payload.get("batch_size") or 0))
+        self.nvenc_check.setChecked(bool(payload.get("use_nvenc", False)))
+        self.rig_check.setChecked(bool(payload.get("colmap_rig", False)))
+        self.overwrite_check.setChecked(bool(payload.get("overwrite", False)))
+        self._populate_table(0)

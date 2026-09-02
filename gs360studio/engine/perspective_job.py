@@ -2,12 +2,18 @@
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 from typing import Any
 
 from core.cancellation import AppJobCancelled, CancellationToken, is_cancelled
 from gs360studio.domain.models import JobSpec, ViewSpec, utc_now
-from gs360studio.engine.perspective_export import ExportRequest, export_image_views, export_video_views
+from gs360studio.engine.perspective_export import (
+    ExportRequest,
+    export_image_views,
+    export_video_views,
+    source_signature,
+)
 from gs360studio.platform.job_store import save_job
 
 _IMAGE_SUFFIXES = frozenset({".png", ".jpg", ".jpeg", ".tif", ".tiff", ".webp"})
@@ -42,6 +48,8 @@ def run_perspective_job_payload(payload: dict[str, Any], *, cancel_event: Cancel
     scene_dir = Path(scene_value) if scene_value else None
     job = JobSpec(
         job_type="perspective-export",
+        dependency_ids=[str(payload["resume_job_id"])] if payload.get("resume_job_id") else [],
+        input_signatures={"source": source_signature(request.input_path)} if request.input_path.exists() else {},
         configuration={key: value for key, value in payload.items() if key != "scene_dir"},
         outputs=[str(request.output_dir)],
         status="running",
@@ -49,11 +57,19 @@ def run_perspective_job_payload(payload: dict[str, Any], *, cancel_event: Cancel
     )
     if scene_dir is not None:
         save_job(scene_dir, job)
+    last_progress_save = 0.0
 
     def canceled() -> bool:
         return is_cancelled(cancel_event)
 
     def progress(current: int, total: int, message: str) -> None:
+        nonlocal last_progress_save
+        job.progress_current = max(0, int(current))
+        job.progress_total = max(0, int(total))
+        now = time.monotonic()
+        if scene_dir is not None and (now - last_progress_save >= 0.25 or current >= total):
+            save_job(scene_dir, job)
+            last_progress_save = now
         print(f"PROGRESS:{current}/{total}", flush=True)
         print(message, flush=True)
 
@@ -83,8 +99,9 @@ def run_perspective_job_payload(payload: dict[str, Any], *, cancel_event: Cancel
         raise
     if scene_dir is not None:
         job.status = "completed"
-        job.progress_current = 1
-        job.progress_total = 1
+        if job.progress_total <= 0:
+            job.progress_total = 1
+        job.progress_current = job.progress_total
         job.finished_at = utc_now()
         save_job(scene_dir, job)
     print(f"OUTPUT:{request.output_dir.resolve()}", flush=True)

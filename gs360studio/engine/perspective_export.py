@@ -50,6 +50,11 @@ def _source_signature(path: Path) -> str:
     return hashlib.sha256(identity.encode("utf-8")).hexdigest()
 
 
+def source_signature(path: str | Path) -> str:
+    """Return the stable identity used by export caching and persisted jobs."""
+    return _source_signature(Path(path))
+
+
 def _configuration_hash(request: ExportRequest) -> str:
     payload = {
         "output_format": request.output_format,
@@ -331,6 +336,8 @@ def export_image_views(
             if source is None:
                 raise ValueError(f"cannot read image: {input_file}")
             for view in request.views:
+                if canceled and canceled():
+                    raise InterruptedError("perspective export canceled")
                 projected = project_equirectangular(source, view, cache=cache)
                 if request.colmap_rig:
                     camera = prepared_by_id[view.id]["camera_name"]

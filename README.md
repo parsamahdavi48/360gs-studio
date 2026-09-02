@@ -10,7 +10,7 @@ This repository preserves and extends the mature `stechdrive-3dgs-utils` pipelin
 
 ## Current status
 
-v0.1 is an engineering foundation, not a stable release. The inherited six-stage workflow remains available, and the new seventh workspace supports arbitrary yaw/pitch/roll views, independent horizontal/vertical FOV, per-view resolution, cached preview projection, PNG/JPEG sequences, silent HEVC exports, presets, and COLMAP rigs.
+v0.1 is an engineering foundation, not a stable release. The inherited six-stage workflow remains available, and the new seventh workspace supports arbitrary yaw/pitch/roll views, independent horizontal/vertical FOV, per-view resolution and interpolation, cached preview projection, PNG/JPEG sequences, silent HEVC exports, presets, and COLMAP rigs. Project frames flow directly into Perspective Export, live progress is persisted, cancellation cleans staging output, and interrupted configurations can be restored and rerun with provenance linking.
 
 Run from a Python 3.12 development environment:
 
