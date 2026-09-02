@@ -5,9 +5,9 @@ from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtWidgets import QApplication, QDockWidget, QMainWindow
+from PySide6.QtWidgets import QApplication, QDockWidget, QMainWindow, QTreeWidgetItem
 
-from gs360studio.i18n import LanguagePack, Translator, bundled_english_pack
+from gs360studio.i18n import LanguagePack, Translator, bundled_english_pack, bundled_persian_pack
 from gs360studio.theme import bundled_midnight_theme
 from gui.app import MainWindow
 from gui.steps.perspective_export import PerspectiveExportStep
@@ -32,15 +32,47 @@ def test_midnight_theme_contract() -> None:
     assert theme.colors["background"].startswith("#")
 
 
+def test_persian_language_pack_is_valid_and_translated() -> None:
+    english = bundled_english_pack()
+    persian = bundled_persian_pack()
+    assert persian.language_id == "fa"
+    assert persian.validate_against(english) == []
+    assert Translator(english, persian).text("app.title") == "استودیو 360GS"
+
+
 def test_main_window_is_dockable_and_contains_perspective_workspace(tmp_path: Path) -> None:
     _app()
     window = MainWindow(str(tmp_path))
     try:
         assert isinstance(window, QMainWindow)
         assert isinstance(window.jobs_dock, QDockWidget)
+        assert isinstance(window.project_dock, QDockWidget)
+        assert isinstance(window.inspector_dock, QDockWidget)
+        assert window.project_dock.objectName() == "projectDock"
+        assert window.inspector_dock.objectName() == "inspectorDock"
         assert isinstance(window.steps[-1], PerspectiveExportStep)
         assert window.stack.count() == 7
         window._set_current_step(6)
         assert window.stack.currentWidget() is window.perspective_step
+    finally:
+        window.shutdown()
+
+
+def test_workstation_panels_follow_scene_and_workspace(tmp_path: Path) -> None:
+    _app()
+    (tmp_path / "images").mkdir()
+    window = MainWindow(str(tmp_path))
+    try:
+        assert window.project_browser.scene_dir == tmp_path
+        assert window.project_browser.project_name.text() == tmp_path.name
+        assert window.project_browser.tree.topLevelItemCount() == 4
+        project_item = window.project_browser.tree.topLevelItem(0)
+        assert isinstance(project_item, QTreeWidgetItem)
+        assert project_item.childCount() == 3
+
+        window._set_current_step(6)
+        assert "Perspective" in window.context_inspector.workspace_label.text()
+        assert window.context_inspector.scene_label.text() == str(tmp_path)
+        assert window.context_inspector.action_label.text() == "Export Perspective Views"
     finally:
         window.shutdown()

@@ -85,6 +85,42 @@ QLabel#statusPill {{
     padding: 3px 8px;
     font-size: 8pt;
 }}
+QLabel#dockSectionTitle {{
+    color: {TEXT_DIM};
+    font-size: 8pt;
+    font-weight: 700;
+    letter-spacing: 1px;
+}}
+QLabel#projectName, QLabel#inspectorTitle {{
+    color: {TEXT_BRIGHT};
+    font-size: 12pt;
+    font-weight: 700;
+}}
+QLabel#mutedText {{
+    color: {TEXT_DIM};
+    font-size: 8pt;
+}}
+QLabel#inspectorValue {{
+    background-color: {BG_INPUT};
+    border: 1px solid {BORDER};
+    border-radius: 5px;
+    color: {TEXT};
+    padding: 8px;
+}}
+QWidget#inspectorDivider {{
+    background-color: {BORDER};
+}}
+QTreeWidget#artifactTree {{
+    background-color: {BG_INPUT};
+    border: 1px solid {BORDER};
+    border-radius: 5px;
+    padding: 3px;
+}}
+QPushButton#compactButton {{
+    min-height: 22px;
+    padding: 2px 8px;
+    font-size: 8pt;
+}}
 QWidget#sidebar {{
     background-color: {BG_MID};
     border: 1px solid {BORDER};

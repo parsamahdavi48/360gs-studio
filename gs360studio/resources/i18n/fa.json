@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "language_id": "fa",
+  "display_name": "فارسی",
+  "strings": {
+    "app.title": "استودیو 360GS",
+    "app.subtitle": "محیط یکپارچهٔ رسانهٔ ۳۶۰ درجه و Gaussian Splatting سه‌بعدی",
+    "perspective.title": "خروجی پرسپکتیو",
+    "perspective.description": "نماهای قابل استفادهٔ مجدد بسازید و آن‌ها را با یک خط پردازش کنترل‌شده خروجی بگیرید.",
+    "diagnostics.ready": "ابزارهای اصلی آماده‌اند",
+    "diagnostics.degraded": "برخی اجزای اختیاری در دسترس نیستند",
+    "jobs.interrupted": "{count} کار متوقف‌شده بازیابی شد"
+  }
+}

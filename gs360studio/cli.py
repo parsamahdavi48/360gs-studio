@@ -26,6 +26,8 @@ def _print_json(value: Any) -> None:
 
 
 def _gui(args: argparse.Namespace) -> int:
+    if args.language:
+        os.environ["STUDIO_LANG"] = args.language
     if getattr(sys, "frozen", False):
         gui_executable = Path(sys.executable).with_name("360GS Studio.exe")
         if not gui_executable.is_file():
@@ -33,6 +35,8 @@ def _gui(args: argparse.Namespace) -> int:
         command = [str(gui_executable)]
         if args.project:
             command.extend(["--scene", str(Path(args.project).resolve())])
+        if args.language:
+            command.extend(["--language", args.language])
         subprocess.Popen(command, cwd=gui_executable.parent)
         return 0
     if args.project:
@@ -158,6 +162,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     gui = sub.add_parser("gui", help="Launch the desktop application")
     gui.add_argument("--project")
+    gui.add_argument("--language", choices=("en", "ja", "fa"))
     gui.set_defaults(handler=_gui)
 
     doctor = sub.add_parser("doctor", help="Inspect local capabilities")

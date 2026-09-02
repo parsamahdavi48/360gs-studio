@@ -16,8 +16,8 @@ dependencies = [
 360gs-studio = "gs360studio.cli:main"
 
 [project.urls]
-Repository = "https://github.com/stechdrive/360gs-studio"
-Issues = "https://github.com/stechdrive/360gs-studio/issues"
+Repository = "https://github.com/parsamahdavi48/360gs-studio"
+Issues = "https://github.com/parsamahdavi48/360gs-studio/issues"
 
 [tool.stechdrive-3dgs-utils]
 core-requirements = "requirements/core.txt"

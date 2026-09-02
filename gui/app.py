@@ -10,7 +10,7 @@ import sys
 from pathlib import Path
 
 from PySide6.QtCore import QSettings, QSignalBlocker, QSize, Qt, QUrl
-from PySide6.QtGui import QAction, QCloseEvent, QDesktopServices, QIcon
+from PySide6.QtGui import QAction, QActionGroup, QCloseEvent, QDesktopServices, QIcon
 from PySide6.QtWidgets import (
     QApplication,
     QDockWidget,
@@ -47,8 +47,10 @@ from gui.steps.step4_cubemap import CubemapStep
 from gui.steps.step5_training import TrainingStep
 from gui.theme import apply_theme
 from gui.version import app_version_label
+from gui.workstation_shell import ContextInspector, ProjectArtifactBrowser
 
-_GITHUB_DOC_BASE_URL = "https://github.com/stechdrive/360gs-studio/blob/main/doc"
+_GITHUB_DOC_BASE_URL = "https://github.com/parsamahdavi48/360gs-studio/blob/main/doc"
+_LAYOUT_STATE_VERSION = 2
 _STEP_HELP_DOC_STEMS = (
     "extract_frames_gui",
     "review_frames_gui",
@@ -68,7 +70,8 @@ def app_icon() -> QIcon:
 def step_help_url(index: int, *, lang: str | None = None) -> str:
     if not 0 <= index < len(_STEP_HELP_DOC_STEMS):
         raise IndexError(f"step index out of range: {index}")
-    suffix = ".ja.md" if (lang or i18n.LANG).lower().startswith("ja") else ".md"
+    language = (lang or i18n.LANG).lower()
+    suffix = ".ja.md" if language.startswith("ja") else ".fa.md" if language.startswith("fa") else ".md"
     return f"{_GITHUB_DOC_BASE_URL}/{_STEP_HELP_DOC_STEMS[index]}{suffix}"
 
 
@@ -79,6 +82,8 @@ class MainWindow(QMainWindow):
         self.setWindowTitle(f"{i18n.APP_TITLE}  {app_version_label()}")
         self.setWindowIcon(app_icon())
         self.resize(1280, 920)
+        self.setMinimumSize(1024, 700)
+        self.setDockNestingEnabled(True)
 
         self.runner = ProcessRunner(self)
         self._current_step: int = 0
@@ -106,15 +111,15 @@ class MainWindow(QMainWindow):
 
         # --- ヘッダー ---
         header = QHBoxLayout()
-        header.setContentsMargins(14, 10, 14, 10)
+        header.setContentsMargins(14, 6, 14, 6)
         header.setSpacing(12)
 
-        title_box = QVBoxLayout()
-        title_box.setSpacing(0)
         title = QLabel(i18n.APP_TITLE)
         title.setObjectName("appTitle")
-        title_box.addWidget(title)
-        header.addLayout(title_box)
+        header.addWidget(title)
+        subtitle = QLabel(i18n.APP_SUBTITLE)
+        subtitle.setObjectName("appSubtitle")
+        header.addWidget(subtitle)
 
         header.addWidget(QLabel(i18n.SCENE_DIR))
         self.scene_browse = BrowseWidget(mode="dir", placeholder=i18n.t("SCENE_DIR_PLACEHOLDER"))
@@ -179,6 +184,13 @@ class MainWindow(QMainWindow):
         self.gpu_status.setObjectName("statusPill")
         self.gpu_status.setToolTip("GPU features are enabled only after their individual capability preflight passes.")
         header.addWidget(self.gpu_status)
+        self.global_menu_btn = QToolButton()
+        self.global_menu_btn.setObjectName("iconToolButton")
+        self.global_menu_btn.setText("•••")
+        self.global_menu_btn.setAccessibleName(i18n.t("SCENE_ACTIONS_MENU"))
+        self.global_menu_btn.setFixedSize(34, 28)
+        self.global_menu_btn.setPopupMode(QToolButton.InstantPopup)
+        header.addWidget(self.global_menu_btn)
         header_widget = QWidget()
         header_widget.setObjectName("appHeader")
         header_widget.setLayout(header)
@@ -303,7 +315,7 @@ class MainWindow(QMainWindow):
         bottom_layout.addWidget(self.progress)
 
         self.log_panel = LogPanel()
-        self.log_panel.setMinimumHeight(100)
+        self.log_panel.setMinimumHeight(76)
         bottom_layout.addWidget(self.log_panel)
 
         btn_row = QHBoxLayout()
@@ -328,12 +340,98 @@ class MainWindow(QMainWindow):
         btn_row.addStretch()
         bottom_layout.addLayout(btn_row)
 
-        self.jobs_dock = QDockWidget("Jobs, progress and logs", self)
+        self.jobs_dock = QDockWidget(i18n.t("SHELL_JOBS_DOCK"), self)
         self.jobs_dock.setObjectName("jobsDock")
         self.jobs_dock.setAllowedAreas(Qt.BottomDockWidgetArea | Qt.TopDockWidgetArea)
         self.jobs_dock.setWidget(job_panel)
         self.addDockWidget(Qt.BottomDockWidgetArea, self.jobs_dock)
+
+        self.project_browser = ProjectArtifactBrowser(self)
+        self.project_browser.path_open_requested.connect(self._open_project_path)
+        self.project_dock = QDockWidget(i18n.t("SHELL_PROJECT_DOCK"), self)
+        self.project_dock.setObjectName("projectDock")
+        self.project_dock.setAllowedAreas(Qt.LeftDockWidgetArea | Qt.RightDockWidgetArea)
+        self.project_dock.setMinimumWidth(230)
+        self.project_dock.setWidget(self.project_browser)
+        self.addDockWidget(Qt.LeftDockWidgetArea, self.project_dock)
+
+        self.context_inspector = ContextInspector(self)
+        self.inspector_dock = QDockWidget(i18n.t("SHELL_INSPECTOR_DOCK"), self)
+        self.inspector_dock.setObjectName("inspectorDock")
+        self.inspector_dock.setAllowedAreas(Qt.LeftDockWidgetArea | Qt.RightDockWidgetArea)
+        self.inspector_dock.setMinimumWidth(220)
+        self.inspector_dock.setWidget(self.context_inspector)
+        self.addDockWidget(Qt.RightDockWidgetArea, self.inspector_dock)
+
+        self._build_menus()
         self._set_current_step(0)
+
+    def _build_menus(self) -> None:
+        self.global_menu = QMenu(self.global_menu_btn)
+        view_menu = self.global_menu.addMenu(i18n.t("SHELL_VIEW_MENU"))
+        view_menu.addAction(self.project_dock.toggleViewAction())
+        view_menu.addAction(self.inspector_dock.toggleViewAction())
+        view_menu.addAction(self.jobs_dock.toggleViewAction())
+        view_menu.addSeparator()
+        reset_layout = QAction(i18n.t("SHELL_RESET_LAYOUT"), self)
+        reset_layout.triggered.connect(self._reset_layout)
+        view_menu.addAction(reset_layout)
+
+        language_menu = self.global_menu.addMenu(i18n.t("SHELL_LANGUAGE_MENU"))
+        language_group = QActionGroup(self)
+        language_group.setExclusive(True)
+        for language_id, label_key in (
+            ("en", "SHELL_LANGUAGE_ENGLISH"),
+            ("ja", "SHELL_LANGUAGE_JAPANESE"),
+            ("fa", "SHELL_LANGUAGE_PERSIAN"),
+        ):
+            action = QAction(i18n.t(label_key), language_group)
+            action.setCheckable(True)
+            action.setChecked(i18n.LANG == language_id)
+            action.triggered.connect(
+                lambda checked=False, selected=language_id: checked and self._set_language_preference(selected)
+            )
+            language_menu.addAction(action)
+
+        help_menu = self.global_menu.addMenu(i18n.t("SHELL_HELP_MENU"))
+        diagnostics_action = QAction(i18n.t("SHELL_DIAGNOSTICS"), self)
+        diagnostics_action.triggered.connect(self._show_diagnostics_hint)
+        help_menu.addAction(diagnostics_action)
+        self.global_menu_btn.setMenu(self.global_menu)
+
+    def _set_language_preference(self, language_id: str) -> None:
+        if language_id == i18n.LANG:
+            return
+        self._settings.setValue("language/id", language_id)
+        QMessageBox.information(
+            self,
+            i18n.t("SHELL_LANGUAGE_RESTART_TITLE"),
+            i18n.t("SHELL_LANGUAGE_RESTART_BODY"),
+        )
+
+    def _reset_layout(self) -> None:
+        self.project_dock.setVisible(True)
+        self.inspector_dock.setVisible(True)
+        self.jobs_dock.setVisible(True)
+        self.addDockWidget(Qt.LeftDockWidgetArea, self.project_dock)
+        self.addDockWidget(Qt.RightDockWidgetArea, self.inspector_dock)
+        self.addDockWidget(Qt.BottomDockWidgetArea, self.jobs_dock)
+        self.resizeDocks([self.project_dock, self.inspector_dock], [260, 250], Qt.Horizontal)
+        self.resizeDocks([self.jobs_dock], [140], Qt.Vertical)
+
+    def _show_diagnostics_hint(self) -> None:
+        QMessageBox.information(
+            self,
+            "360GS Studio Diagnostics",
+            "Run '360gs-studio doctor' for a detailed capability report.\n\n"
+            f"{self.component_status.text()}\n{self.gpu_status.text()}",
+        )
+
+    def _open_project_path(self, value: str) -> None:
+        path = Path(value)
+        target = path if path.exists() else path.parent
+        if target.exists():
+            QDesktopServices.openUrl(QUrl.fromLocalFile(str(target.resolve())))
 
     def _restore_layout(self) -> None:
         geometry = self._settings.value("window/geometry")
@@ -341,11 +439,13 @@ class MainWindow(QMainWindow):
         if geometry:
             self.restoreGeometry(geometry)
         if state:
-            self.restoreState(state)
+            self.restoreState(state, _LAYOUT_STATE_VERSION)
+        else:
+            self._reset_layout()
 
     def _save_layout(self) -> None:
         self._settings.setValue("window/geometry", self.saveGeometry())
-        self._settings.setValue("window/state", self.saveState())
+        self._settings.setValue("window/state", self.saveState(_LAYOUT_STATE_VERSION))
 
     def _connect_signals(self) -> None:
         self.scene_browse.path_changed.connect(self._on_scene_changed)
@@ -391,6 +491,7 @@ class MainWindow(QMainWindow):
                 step.set_scene_dir(path)
         self.clear_scene_btn.setEnabled(bool(path))
         self.clear_scene_action.setEnabled(bool(path))
+        self.project_browser.set_scene_dir(path)
         if activate_current:
             step = self._current_step_widget()
             if step is not None:
@@ -400,6 +501,7 @@ class MainWindow(QMainWindow):
                 if was_deferred:
                     self._update_run_button()
         self._update_step_header()
+        self._update_context_inspector()
 
     def _set_scene_browse_text_silently(self, path: str) -> None:
         blocker = QSignalBlocker(self.scene_browse.line_edit)
@@ -482,6 +584,7 @@ class MainWindow(QMainWindow):
         self.progress.set_status(i18n.t("IMPORT_SCENE_RUNNING"))
         self.log_panel.append_log(i18n.t("IMPORT_SCENE_STARTED").format(scene=scene))
         self._update_run_button()
+        self._update_context_inspector()
 
         self.runner.start_queue(
             [("scene_import", frame_app_job(import_scene_job(scene_dir=scene)))],
@@ -586,6 +689,23 @@ class MainWindow(QMainWindow):
         self.step_subheader.setText("")
         self.step_subheader.setToolTip("")
         self.step_subheader.setVisible(False)
+        self._update_context_inspector()
+
+    def _update_context_inspector(self) -> None:
+        if not hasattr(self, "context_inspector"):
+            return
+        index = self.stack.currentIndex()
+        if not 0 <= index < len(self.step_titles):
+            return
+        step = self._current_step_widget()
+        action = step.primary_action_text() if step is not None else ""
+        description = step.primary_action_tooltip() if step is not None else ""
+        self.context_inspector.set_context(
+            workspace=self.step_titles[index],
+            description=description,
+            scene=self.scene_browse.text(),
+            action=action,
+        )
 
     def _on_step_header_back(self) -> None:
         if self._workflow_busy():
@@ -802,6 +922,7 @@ class MainWindow(QMainWindow):
             status = self.progress.status_label.text()
             if i18n.STATUS_CANCELED not in status:
                 self.progress.set_status(i18n.STATUS_FAILED)
+        self.project_browser.refresh()
         self._update_run_button()
 
     def _on_background_task_started(self, status: str) -> None:
@@ -827,6 +948,7 @@ class MainWindow(QMainWindow):
             self.progress.set_status(i18n.STATUS_DONE)
         else:
             self.progress.set_status(i18n.STATUS_FAILED)
+        self.project_browser.refresh()
         self._update_run_button()
 
     def shutdown(self) -> None:
@@ -847,6 +969,7 @@ class MainWindow(QMainWindow):
 def main() -> None:
     parser = argparse.ArgumentParser(description=i18n.APP_TITLE)
     parser.add_argument("--scene", default="", help="Initial scene directory")
+    parser.add_argument("--language", choices=("en", "ja", "fa"), help="UI language")
     parser.add_argument(
         "--enable-apriltag",
         action="store_true",
@@ -860,6 +983,7 @@ def main() -> None:
     args = parser.parse_args()
     app = QApplication(sys.argv)
     app.setWindowIcon(app_icon())
+    app.setLayoutDirection(Qt.RightToLeft if i18n.is_right_to_left() else Qt.LeftToRight)
     apply_theme(app)
 
     initial_scene = args.scene or os.environ.get("GS360_INITIAL_PROJECT", "")

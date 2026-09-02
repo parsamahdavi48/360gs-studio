@@ -12,6 +12,8 @@ import textwrap
 
 from gui.i18n_en import STRINGS as _EN
 from gui.i18n_en import TIPS as _TIPS_EN
+from gui.i18n_fa import STRINGS as _FA
+from gui.i18n_fa import TIPS as _TIPS_FA
 from gui.i18n_ja import STRINGS as _JA
 from gui.i18n_ja import TIPS as _TIPS_JA
 
@@ -25,32 +27,44 @@ from gui.i18n_ja import TIPS as _TIPS_JA
 
 
 def _detect_lang() -> str:
-    """環境変数 → システムロケールの順で言語を判定。'ja' or 'en'。"""
+    """Detect English, Japanese, or Persian from overrides and locale."""
     override = os.environ.get("STUDIO_LANG", "").strip().lower()
     if override in ("ja", "jp", "ja_jp"):
         return "ja"
     if override in ("en", "en_us", "en_gb"):
         return "en"
+    if override in ("fa", "fa_ir", "persian", "farsi"):
+        return "fa"
     for env_name in ("LC_ALL", "LC_MESSAGES", "LANG"):
         env_locale = os.environ.get(env_name, "").strip().lower()
         if env_locale.startswith(("ja", "japanese")):
             return "ja"
         if env_locale.startswith(("en", "english")):
             return "en"
+        if env_locale.startswith(("fa", "persian", "farsi")):
+            return "fa"
     try:
         loc = locale.getlocale()[0] or ""
     except Exception:
         loc = ""
     loc = loc.lower()
-    return "ja" if loc.startswith(("ja", "japanese")) else "en"
+    if loc.startswith(("ja", "japanese")):
+        return "ja"
+    if loc.startswith(("fa", "persian", "farsi")):
+        return "fa"
+    return "en"
 
 
 LANG = _detect_lang()
-_table = _JA if LANG == "ja" else _EN
-_tips = _TIPS_JA if LANG == "ja" else _TIPS_EN
+_table = _JA if LANG == "ja" else _FA if LANG == "fa" else _EN
+_tips = _TIPS_JA if LANG == "ja" else _TIPS_FA if LANG == "fa" else _TIPS_EN
 _TOOLTIP_WRAP_WIDTH = 46 if LANG == "ja" else 78
 _PATH_SEPARATORS = set("/\\")
 _JA_FORBIDDEN_LINE_START = set("。、，．,.!?！？:：;；)]）】〕〉》」』”’/\\")
+
+
+def is_right_to_left() -> bool:
+    return LANG == "fa"
 
 
 def _extend_path_separator_break(line: str, start: int, end: int) -> int:

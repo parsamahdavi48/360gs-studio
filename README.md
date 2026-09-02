@@ -22,6 +22,14 @@ python -m gs360studio export-views --project C:\scene --profile cubemap
 
 See [ROADMAP.md](ROADMAP.md), [CONTRIBUTING.md](CONTRIBUTING.md), and the [architecture decisions](doc/adr/README.md).
 
+Documentation is organized in the [GitHub Wiki](https://github.com/parsamahdavi48/360gs-studio/wiki). The version-controlled source for every wiki page lives in [`wiki/`](wiki/), including a [Persian guide](wiki/Persian-Guide.md).
+
+The desktop UI supports English, Japanese, and Persian. Choose a language from the **Language** menu; Persian uses a right-to-left layout and English fallback for specialist strings that have not been translated yet. The CLI equivalent is:
+
+```powershell
+360gs-studio gui --language fa
+```
+
 The main workflow is to organize and mask ERP/equirectangular footage from cameras such as Insta360 / Osmo 360, run SfM in Metashape, then convert the result into datasets for Postshot, Brush, LichtFeld Studio, COLMAP-format workflows, or RealityScan realignment. It also supports normal-camera images/video, in-app COLMAP routes including COLMAP 4.1+ native spherical SfM, and RealityScan-to-LichtFeld conversion.
 
 ## Upstream heritage

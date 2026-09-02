@@ -56,3 +56,7 @@ class Translator:
 
 def bundled_english_pack() -> LanguagePack:
     return LanguagePack.load(Path(__file__).resolve().parent / "resources" / "i18n" / "en.json")
+
+
+def bundled_persian_pack() -> LanguagePack:
+    return LanguagePack.load(Path(__file__).resolve().parent / "resources" / "i18n" / "fa.json")
