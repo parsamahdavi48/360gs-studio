@@ -1,0 +1,16 @@
+name: Feature request
+description: Propose a scoped product improvement
+title: "feat: "
+labels: ["type: feature"]
+body:
+  - type: textarea
+    id: problem
+    attributes: {label: Problem or workflow friction}
+    validations: {required: true}
+  - type: textarea
+    id: result
+    attributes: {label: Desired result and acceptance criteria}
+    validations: {required: true}
+  - type: textarea
+    id: alternatives
+    attributes: {label: Alternatives considered}

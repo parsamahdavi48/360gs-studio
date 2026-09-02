@@ -1,4 +1,4 @@
-"""ダークモダンテーマ (DaVinci Resolve / Blender 風)"""
+"""Original Midnight workstation theme for 360GS Studio."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -7,28 +7,30 @@ from PySide6.QtGui import QFont, QFontDatabase
 from PySide6.QtWidgets import QApplication
 
 # カラーパレット
-BG_DARK = "#15171a"
-BG_MID = "#1e2227"
-BG_PANEL = "#252a31"
-BG_INPUT = "#101316"
-BORDER = "#3a424d"
-BORDER_FOCUS = "#2dd4bf"
-TEXT = "#e5e7eb"
-TEXT_DIM = "#9ca3af"
-TEXT_BRIGHT = "#ffffff"
-ACCENT = "#2dd4bf"
-ACCENT_HOVER = "#5eead4"
-ACCENT_PRESSED = "#14b8a6"
+BG_DARK = "#10131a"
+BG_MID = "#171b24"
+BG_PANEL = "#202632"
+BG_INPUT = "#0c0f15"
+BORDER = "#353d4d"
+BORDER_FOCUS = "#5aa7ff"
+TEXT = "#e8edf6"
+TEXT_DIM = "#9ba7b9"
+TEXT_BRIGHT = "#f8fbff"
+ACCENT = "#5aa7ff"
+ACCENT_HOVER = "#83bdff"
+ACCENT_PRESSED = "#3d8ce6"
 SUCCESS = "#22c55e"
 WARNING = "#f59e0b"
 DANGER = "#ef4444"
-TAB_ACTIVE = "#2dd4bf"
-TAB_INACTIVE = "#252a31"
+TAB_ACTIVE = "#a66fe0"
+TAB_INACTIVE = "#202632"
 SCROLL_HANDLE = "#4b5563"
 
-FONT_FAMILY = "Meiryo UI"
+FONT_FAMILY = "Inter"
 FONT_SIZE = 10
 _EXTRA_FONT_PATHS = (
+    Path(__file__).resolve().parent / "assets" / "fonts" / "Inter-Regular.ttf",
+    Path("C:/Windows/Fonts/segoeui.ttf"),
     Path("C:/Windows/Fonts/meiryo.ttc"),
     Path("C:/Windows/Fonts/YuGothR.ttc"),
     Path("C:/Windows/Fonts/msgothic.ttc"),
@@ -74,6 +76,14 @@ QLabel#appTitle {{
 QLabel#appSubtitle {{
     color: {TEXT_DIM};
     font-size: 9pt;
+}}
+QLabel#statusPill {{
+    background-color: {BG_PANEL};
+    border: 1px solid {BORDER};
+    border-radius: 9px;
+    color: {TEXT_DIM};
+    padding: 3px 8px;
+    font-size: 8pt;
 }}
 QWidget#sidebar {{
     background-color: {BG_MID};

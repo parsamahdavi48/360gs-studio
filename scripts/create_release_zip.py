@@ -204,8 +204,8 @@ def validate_release_file_contents(repo_root: Path, path: str) -> None:
 
 def create_release_zip(repo_root: Path, output: Path | None = None) -> Path:
     version = read_version(repo_root)
-    prefix = f"stechdrive-3dgs-utils-v{version}/"
-    output_path = output or repo_root / ".cache" / "release" / f"stechdrive-3dgs-utils-v{version}.zip"
+    prefix = f"360gs-studio-v{version}/"
+    output_path = output or repo_root / ".cache" / "release" / f"360gs-studio-v{version}.zip"
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     files = [path for path in git_tracked_files(repo_root) if include_in_release(path)]
@@ -234,7 +234,7 @@ def file_sha256(path: Path) -> str:
 def build_release_manifest(repo_root: Path, version: str, root_prefix: str, files: list[str]) -> str:
     manifest = {
         "schema_version": 1,
-        "app": "stechdrive-3dgs-utils",
+        "app": "360gs-studio",
         "version": version,
         "root": root_prefix.rstrip("/"),
         "files": [
@@ -284,8 +284,8 @@ def verify_release_zip_setup(
     version: str,
     python_executable: str | None = None,
 ) -> None:
-    expected_root_name = f"stechdrive-3dgs-utils-v{version}"
-    with tempfile.TemporaryDirectory(prefix="stechdrive-release-verify-") as temp_dir:
+    expected_root_name = f"360gs-studio-v{version}"
+    with tempfile.TemporaryDirectory(prefix="360gs-release-verify-") as temp_dir:
         temp_root = Path(temp_dir)
         with zipfile.ZipFile(zip_path) as zf:
             zf.extractall(temp_root)
@@ -308,7 +308,7 @@ def parse_args() -> argparse.Namespace:
         "--output",
         type=Path,
         default=None,
-        help="Output ZIP path. Defaults to .cache/release/stechdrive-3dgs-utils-vVERSION.zip.",
+        help="Output ZIP path. Defaults to .cache/release/360gs-studio-vVERSION.zip.",
     )
     parser.add_argument(
         "--skip-setup-verify",

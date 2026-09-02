@@ -1,0 +1,17 @@
+name: Performance regression
+description: Report a measurable speed or memory regression
+title: "perf: "
+labels: ["type: performance"]
+body:
+  - type: textarea
+    id: workload
+    attributes: {label: Workload, input properties, and view settings}
+    validations: {required: true}
+  - type: textarea
+    id: measurements
+    attributes: {label: Before/after measurements and reference build}
+    validations: {required: true}
+  - type: textarea
+    id: hardware
+    attributes: {label: CPU, RAM, GPU, driver, storage, and doctor output}
+    validations: {required: true}

@@ -8,6 +8,7 @@ from pathlib import Path
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 _PYPROJECT_PATH = _PROJECT_ROOT / "pyproject.toml"
 _FALLBACK_VERSION = "0.0.0"
+_PACKAGED_VERSION = "0.1.0"
 _VERSION_RE = re.compile(r"^\d+\.\d+\.\d+$")
 
 
@@ -25,6 +26,9 @@ def read_app_version(pyproject_path: Path = _PYPROJECT_PATH) -> str:
 
 
 APP_VERSION = read_app_version()
+if APP_VERSION == _FALLBACK_VERSION:
+    # Frozen one-directory builds do not ship the repository-level pyproject.
+    APP_VERSION = _PACKAGED_VERSION
 
 
 def app_version_label() -> str:

@@ -128,7 +128,7 @@ def test_sfm_cards_open_in_step_sfm_pages_and_external_route_goes_to_dataset(tmp
     _app()
     window = MainWindow(str(tmp_path))
     try:
-        assert len(window.steps) == 6
+        assert len(window.steps) == 7
         assert [button.text() for button in window.step_buttons] == [
             i18n.t("STEP1_NAV"),
             i18n.t("STEP2_NAV"),
@@ -136,6 +136,7 @@ def test_sfm_cards_open_in_step_sfm_pages_and_external_route_goes_to_dataset(tmp
             i18n.t("STEP4_NAV"),
             i18n.t("STEP5_NAV"),
             i18n.t("STEP6_NAV"),
+            i18n.t("STEP7_NAV"),
         ]
         route_cards = [*window.sfm_step.card_grid.buttons.values(), *window.dataset_step.card_grid.buttons.values()]
         assert len({card.minimumHeight() for card in route_cards}) == 1

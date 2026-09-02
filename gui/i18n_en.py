@@ -4,8 +4,8 @@ from __future__ import annotations
 
 STRINGS: dict[str, str] = {
     # App
-    "APP_TITLE": "STechDrive 3DGS Utils",
-    "APP_SUBTITLE": "Prepare frames, masks, and SfM datasets for 3DGS workflows",
+    "APP_TITLE": "360GS Studio",
+    "APP_SUBTITLE": "A unified 360° capture-to-3DGS workstation",
     "WORKFLOW_LABEL": "Workflow",
     "STEP1_DESC": "Extract SfM-ready frames from a 360 video",
     "STEP2_DESC": "Review extracted frames and finalize keep/drop choices",
@@ -19,12 +19,14 @@ STRINGS: dict[str, str] = {
     "STEP4_TITLE": "4. SfM",
     "STEP5_TITLE": "5. Dataset",
     "STEP6_TITLE": "6. Training",
+    "STEP7_TITLE": "7. Perspective Export",
     "STEP1_NAV": "1\nExtract",
     "STEP2_NAV": "2\nReview",
     "STEP3_NAV": "3\nMask",
     "STEP4_NAV": "4\nSfM",
     "STEP5_NAV": "5\nDataset",
     "STEP6_NAV": "6\nTrain",
+    "STEP7_NAV": "7\nViews",
     # Common
     "BROWSE": "Browse...",
     "SCENE_DIR": "Scene Folder",

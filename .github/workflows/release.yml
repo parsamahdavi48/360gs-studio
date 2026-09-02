@@ -1,0 +1,50 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r requirements/core.txt pyinstaller
+      - shell: pwsh
+        run: ./packaging/build_windows.ps1
+      - name: Authenticode sign executables
+        if: ${{ secrets.WINDOWS_CERTIFICATE != '' }}
+        shell: pwsh
+        env:
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
+          $pfxPath = Join-Path $env:RUNNER_TEMP "360gs-signing.pfx"
+          [IO.File]::WriteAllBytes($pfxPath, [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE))
+          $password = ConvertTo-SecureString $env:WINDOWS_CERTIFICATE_PASSWORD -AsPlainText -Force
+          $certificate = Import-PfxCertificate -FilePath $pfxPath -CertStoreLocation Cert:\CurrentUser\My -Password $password
+          Get-ChildItem "dist\360GS Studio" -Filter *.exe | ForEach-Object {
+            $result = Set-AuthenticodeSignature -FilePath $_.FullName -Certificate $certificate -HashAlgorithm SHA256 -TimestampServer "http://timestamp.digicert.com"
+            if ($result.Status -ne "Valid") { throw "Signing failed for $($_.Name): $($result.StatusMessage)" }
+          }
+      - shell: pwsh
+        run: Compress-Archive -Path 'dist/360GS Studio/*' -DestinationPath 'dist/360GS-Studio-portable.zip'
+      - shell: pwsh
+        run: Get-FileHash dist/360GS-Studio-portable.zip -Algorithm SHA256 | ConvertTo-Json | Set-Content dist/checksums.json
+      - uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            dist/360GS-Studio-portable.zip
+            dist/checksums.json
+            dist/sbom.cdx.json
+            LICENSE
+            NOTICE.md
+            THIRD_PARTY_LICENSES.md
+            CHANGELOG.md

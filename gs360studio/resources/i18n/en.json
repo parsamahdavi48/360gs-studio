@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "language_id": "en",
+  "display_name": "English",
+  "strings": {
+    "app.title": "360GS Studio",
+    "app.subtitle": "360° media and 3D Gaussian Splatting workstation",
+    "perspective.title": "Perspective Export",
+    "perspective.description": "Design reusable views and export them with one bounded decode pipeline.",
+    "diagnostics.ready": "Core tools ready",
+    "diagnostics.degraded": "Some optional components are unavailable",
+    "jobs.interrupted": "Recovered {count} interrupted job(s)"
+  }
+}

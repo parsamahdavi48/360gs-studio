@@ -200,7 +200,7 @@ def test_select_zip_asset_requires_exact_release_asset_name() -> None:
         assets=(
             update_app.ReleaseAsset(name="other.zip", browser_download_url="https://example.test/other.zip", size=1),
             update_app.ReleaseAsset(
-                name="stechdrive-3dgs-utils-v1.2.3.zip",
+                name="360gs-studio-v1.2.3.zip",
                 browser_download_url="https://example.test/app.zip",
                 size=2,
             ),

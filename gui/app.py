@@ -4,19 +4,22 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import shutil
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import QSignalBlocker, QSize, Qt, QUrl
+from PySide6.QtCore import QSettings, QSignalBlocker, QSize, Qt, QUrl
 from PySide6.QtGui import QAction, QCloseEvent, QDesktopServices, QIcon
 from PySide6.QtWidgets import (
     QApplication,
+    QDockWidget,
     QHBoxLayout,
     QLabel,
+    QMainWindow,
     QMenu,
     QMessageBox,
     QPushButton,
-    QSplitter,
     QStackedWidget,
     QToolButton,
     QVBoxLayout,
@@ -35,6 +38,7 @@ from gui.common.process_runner import ProcessRunner
 from gui.common.progress_widget import ProgressWidget
 from gui.steps.base_step import BaseStepWidget
 from gui.steps.dataset_step import DatasetStep
+from gui.steps.perspective_export import PerspectiveExportStep
 from gui.steps.sfm_step import SfmStep
 from gui.steps.step1_extract import ExtractStep
 from gui.steps.step2_review import ReviewStep
@@ -44,7 +48,7 @@ from gui.steps.step5_training import TrainingStep
 from gui.theme import apply_theme
 from gui.version import app_version_label
 
-_GITHUB_DOC_BASE_URL = "https://github.com/stechdrive/stechdrive-3dgs-utils/blob/main/doc"
+_GITHUB_DOC_BASE_URL = "https://github.com/stechdrive/360gs-studio/blob/main/doc"
 _STEP_HELP_DOC_STEMS = (
     "extract_frames_gui",
     "review_frames_gui",
@@ -52,6 +56,7 @@ _STEP_HELP_DOC_STEMS = (
     "cubemap_tools_gui",
     "cubemap_tools_gui",
     "training_gui",
+    "perspective_export",
 )
 def app_icon() -> QIcon:
     icon_path = Path(__file__).resolve().parent / "assets" / "app_icon.ico"
@@ -67,7 +72,7 @@ def step_help_url(index: int, *, lang: str | None = None) -> str:
     return f"{_GITHUB_DOC_BASE_URL}/{_STEP_HELP_DOC_STEMS[index]}{suffix}"
 
 
-class MainWindow(QWidget):
+class MainWindow(QMainWindow):
     def __init__(self, initial_scene_dir: str = "") -> None:
         super().__init__()
         self.base_dir = Path(__file__).resolve().parent.parent
@@ -87,12 +92,15 @@ class MainWindow(QWidget):
         self._scene_import_summary: dict[str, object] | None = None
         self._deferred_scene_sync_path: str | None = None
         self._deferred_scene_sync_step_ids: set[int] = set()
+        self._settings = QSettings("360GS Studio", "360GS Studio")
 
         self._build_ui(initial_scene_dir)
         self._connect_signals()
+        self._restore_layout()
 
     def _build_ui(self, initial_scene_dir: str) -> None:
-        root = QVBoxLayout(self)
+        central = QWidget()
+        root = QVBoxLayout(central)
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
 
@@ -161,6 +169,16 @@ class MainWindow(QWidget):
         self.scene_menu_btn.setMenu(self.scene_actions_menu)
         self.scene_menu_btn.setPopupMode(QToolButton.InstantPopup)
         header.addWidget(self.scene_browse, stretch=1)
+        ffmpeg_ready = bool(shutil.which("ffmpeg.exe") or shutil.which("ffmpeg"))
+        gpu_ready = bool(shutil.which("nvidia-smi.exe") or shutil.which("nvidia-smi"))
+        self.component_status = QLabel("FFmpeg ✓" if ffmpeg_ready else "FFmpeg —")
+        self.component_status.setObjectName("statusPill")
+        self.component_status.setToolTip("Run 360gs-studio doctor for codec and encoder capabilities.")
+        header.addWidget(self.component_status)
+        self.gpu_status = QLabel("NVIDIA ✓" if gpu_ready else "CPU mode")
+        self.gpu_status.setObjectName("statusPill")
+        self.gpu_status.setToolTip("GPU features are enabled only after their individual capability preflight passes.")
+        header.addWidget(self.gpu_status)
         header_widget = QWidget()
         header_widget.setObjectName("appHeader")
         header_widget.setLayout(header)
@@ -173,8 +191,17 @@ class MainWindow(QWidget):
         self.sfm_step = SfmStep(self.base_dir, self.step4)
         self.dataset_step = DatasetStep(self.base_dir, self.step4)
         self.step5 = TrainingStep(self.base_dir, self.step4)
+        self.perspective_step = PerspectiveExportStep(self.base_dir)
         self.step4.enable_user_preferences()
-        self.steps = [self.step1, self.step2, self.step3, self.sfm_step, self.dataset_step, self.step5]
+        self.steps = [
+            self.step1,
+            self.step2,
+            self.step3,
+            self.sfm_step,
+            self.dataset_step,
+            self.step5,
+            self.perspective_step,
+        ]
         self._sfm_step_index = 3
         self._dataset_step_index = 4
         self._training_step_index = 5
@@ -185,6 +212,7 @@ class MainWindow(QWidget):
             i18n.STEP4_TITLE,
             i18n.STEP5_TITLE,
             i18n.t("STEP6_TITLE"),
+            i18n.t("STEP7_TITLE"),
         ]
         self.step_nav_titles = [
             i18n.t("STEP1_NAV"),
@@ -193,11 +221,8 @@ class MainWindow(QWidget):
             i18n.t("STEP4_NAV"),
             i18n.t("STEP5_NAV"),
             i18n.t("STEP6_NAV"),
+            i18n.t("STEP7_NAV"),
         ]
-        # --- メイン分割: 作業領域 / 実行状態 ---
-        splitter = QSplitter(Qt.Vertical)
-        splitter.setChildrenCollapsible(False)
-
         workspace = QWidget()
         workspace_layout = QHBoxLayout(workspace)
         workspace_layout.setContentsMargins(12, 12, 12, 8)
@@ -265,7 +290,8 @@ class MainWindow(QWidget):
             self.stack.addWidget(step)
         content_layout.addWidget(self.stack, stretch=1)
         workspace_layout.addWidget(content_panel, stretch=1)
-        splitter.addWidget(workspace)
+        root.addWidget(workspace, stretch=1)
+        self.setCentralWidget(central)
 
         job_panel = QWidget()
         job_panel.setObjectName("jobPanel")
@@ -302,12 +328,24 @@ class MainWindow(QWidget):
         btn_row.addStretch()
         bottom_layout.addLayout(btn_row)
 
-        splitter.addWidget(job_panel)
-        splitter.setStretchFactor(0, 5)
-        splitter.setStretchFactor(1, 2)
-        splitter.setSizes([660, 220])
-        root.addWidget(splitter)
+        self.jobs_dock = QDockWidget("Jobs, progress and logs", self)
+        self.jobs_dock.setObjectName("jobsDock")
+        self.jobs_dock.setAllowedAreas(Qt.BottomDockWidgetArea | Qt.TopDockWidgetArea)
+        self.jobs_dock.setWidget(job_panel)
+        self.addDockWidget(Qt.BottomDockWidgetArea, self.jobs_dock)
         self._set_current_step(0)
+
+    def _restore_layout(self) -> None:
+        geometry = self._settings.value("window/geometry")
+        state = self._settings.value("window/state")
+        if geometry:
+            self.restoreGeometry(geometry)
+        if state:
+            self.restoreState(state)
+
+    def _save_layout(self) -> None:
+        self._settings.setValue("window/geometry", self.saveGeometry())
+        self._settings.setValue("window/state", self.saveState())
 
     def _connect_signals(self) -> None:
         self.scene_browse.path_changed.connect(self._on_scene_changed)
@@ -801,6 +839,7 @@ class MainWindow(QWidget):
             step.shutdown()
 
     def closeEvent(self, event: QCloseEvent) -> None:
+        self._save_layout()
         self.shutdown()
         event.accept()
 
@@ -823,7 +862,8 @@ def main() -> None:
     app.setWindowIcon(app_icon())
     apply_theme(app)
 
-    window = MainWindow(initial_scene_dir=args.scene)
+    initial_scene = args.scene or os.environ.get("GS360_INITIAL_PROJECT", "")
+    window = MainWindow(initial_scene_dir=initial_scene)
     app.aboutToQuit.connect(window.shutdown)
     window.show()
     sys.exit(app.exec())

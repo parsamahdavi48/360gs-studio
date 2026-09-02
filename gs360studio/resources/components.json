@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "components": [
+    {
+      "component_id": "ffmpeg",
+      "version": "system",
+      "display_name": "FFmpeg / FFprobe",
+      "license_id": "LGPL-2.1-or-later",
+      "executable": "ffmpeg.exe",
+      "optional": false
+    },
+    {
+      "component_id": "colmap",
+      "version": "system",
+      "display_name": "COLMAP",
+      "license_id": "BSD-3-Clause",
+      "executable": "COLMAP.bat",
+      "optional": true
+    },
+    {
+      "component_id": "sam31",
+      "version": "user-managed",
+      "display_name": "SAM 3.1 model runtime",
+      "license_id": "SEE-UPSTREAM-LICENSE",
+      "optional": true
+    },
+    {
+      "component_id": "lichtfeld",
+      "version": "external",
+      "display_name": "LichtFeld Studio",
+      "license_id": "GPL-3.0-only",
+      "executable": "LichtFeld-Studio.exe",
+      "optional": true
+    }
+  ]
+}

@@ -18,32 +18,33 @@ def _app():
 def test_step_help_url_follows_language() -> None:
     assert (
         step_help_url(0, lang="ja")
-        == "https://github.com/stechdrive/stechdrive-3dgs-utils/blob/main/doc/extract_frames_gui.ja.md"
+        == "https://github.com/stechdrive/360gs-studio/blob/main/doc/extract_frames_gui.ja.md"
     )
     assert (
         step_help_url(1, lang="en")
-        == "https://github.com/stechdrive/stechdrive-3dgs-utils/blob/main/doc/review_frames_gui.md"
+        == "https://github.com/stechdrive/360gs-studio/blob/main/doc/review_frames_gui.md"
     )
     assert (
         step_help_url(2, lang="ja_JP")
-        == "https://github.com/stechdrive/stechdrive-3dgs-utils/blob/main/doc/mask_tools_gui.ja.md"
+        == "https://github.com/stechdrive/360gs-studio/blob/main/doc/mask_tools_gui.ja.md"
     )
     assert (
         step_help_url(3, lang="en_US")
-        == "https://github.com/stechdrive/stechdrive-3dgs-utils/blob/main/doc/cubemap_tools_gui.md"
+        == "https://github.com/stechdrive/360gs-studio/blob/main/doc/cubemap_tools_gui.md"
     )
     assert (
         step_help_url(4, lang="ja")
-        == "https://github.com/stechdrive/stechdrive-3dgs-utils/blob/main/doc/cubemap_tools_gui.ja.md"
+        == "https://github.com/stechdrive/360gs-studio/blob/main/doc/cubemap_tools_gui.ja.md"
     )
     assert (
         step_help_url(5, lang="ja")
-        == "https://github.com/stechdrive/stechdrive-3dgs-utils/blob/main/doc/training_gui.ja.md"
+        == "https://github.com/stechdrive/360gs-studio/blob/main/doc/training_gui.ja.md"
     )
     assert (
         step_help_url(5, lang="en")
-        == "https://github.com/stechdrive/stechdrive-3dgs-utils/blob/main/doc/training_gui.md"
+        == "https://github.com/stechdrive/360gs-studio/blob/main/doc/training_gui.md"
     )
+    assert step_help_url(6, lang="en") == "https://github.com/stechdrive/360gs-studio/blob/main/doc/perspective_export.md"
 
 
 def test_main_window_step_help_button_opens_current_step_doc(tmp_path: Path, monkeypatch) -> None:

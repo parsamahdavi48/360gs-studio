@@ -19,6 +19,12 @@ extract_cache.npz
 .codex/
 AGENTS.md
 .pytest_cache/
+build/
+dist/
+*.spec
+*.egg-info/
+.test-appdata*/
+.test-localappdata*/
 
 # Local-only maintainer/Codex architecture notes.
 doc/architecture*.md

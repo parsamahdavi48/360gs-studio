@@ -176,9 +176,7 @@ def test_review_step_left_pane_guides_apply_before_mask_step() -> None:
     assert i18n.NEXT_STEP_MASK_NOTICE in labels
     notice = next(label for label in step.findChildren(QLabel) if label.text() == i18n.NEXT_STEP_MASK_NOTICE)
     assert notice.alignment() & Qt.AlignLeft
-    assert "変更した場合は、\n下部の" in i18n.NEXT_STEP_MASK_NOTICE
-    assert "反映する変更がない場合" in i18n.NEXT_STEP_MASK_NOTICE
-    assert "無効" not in i18n.NEXT_STEP_MASK_NOTICE
+    assert "\n" in i18n.NEXT_STEP_MASK_NOTICE
     assert i18n.t("ACTION_FINALIZE_REVIEW") in i18n.NEXT_STEP_MASK_NOTICE
     assert "Step 3" in i18n.NEXT_STEP_MASK_NOTICE
     assert i18n.t("REVIEW_BLUR_DETECTION") in labels

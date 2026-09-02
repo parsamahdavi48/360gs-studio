@@ -1,7 +1,7 @@
 import re
 from pathlib import Path
 
-from gui.version import APP_VERSION, app_version_label, read_app_version
+from gui.version import _PACKAGED_VERSION, APP_VERSION, app_version_label, read_app_version
 
 
 def test_read_app_version_from_pyproject(tmp_path: Path) -> None:
@@ -20,6 +20,10 @@ def test_read_app_version_falls_back_for_short_version(tmp_path: Path) -> None:
     pyproject.write_text('[project]\nname = "x"\nversion = "1.2"\n', encoding="utf-8")
 
     assert read_app_version(pyproject) == "0.0.0"
+
+
+def test_frozen_version_fallback_tracks_project_version() -> None:
+    assert _PACKAGED_VERSION == APP_VERSION
 
 
 def test_app_version_label_is_prefixed() -> None:

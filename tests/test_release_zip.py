@@ -54,15 +54,15 @@ def test_build_release_manifest_records_release_files(tmp_path: Path) -> None:
         release_zip.build_release_manifest(
             tmp_path,
             version="9.9.9",
-            root_prefix="stechdrive-3dgs-utils-v9.9.9/",
+            root_prefix="360gs-studio-v9.9.9/",
             files=["update.bat", "run_gui.bat"],
         )
     )
 
     assert manifest["schema_version"] == 1
-    assert manifest["app"] == "stechdrive-3dgs-utils"
+    assert manifest["app"] == "360gs-studio"
     assert manifest["version"] == "9.9.9"
-    assert manifest["root"] == "stechdrive-3dgs-utils-v9.9.9"
+    assert manifest["root"] == "360gs-studio-v9.9.9"
     assert [item["path"] for item in manifest["files"]] == ["run_gui.bat", "update.bat"]
     assert all(len(item["sha256"]) == 64 for item in manifest["files"])
 
@@ -166,7 +166,7 @@ def test_release_setup_preflight_command_uses_extracted_script_on_posix() -> Non
 def test_verify_release_zip_setup_runs_from_extracted_root(monkeypatch, tmp_path: Path) -> None:
     zip_path = tmp_path / "release.zip"
     with zipfile.ZipFile(zip_path, "w") as zf:
-        zf.writestr("stechdrive-3dgs-utils-v9.9.9/update.bat", "")
+        zf.writestr("360gs-studio-v9.9.9/update.bat", "")
 
     calls: list[tuple[list[str], Path, bool]] = []
 
@@ -179,5 +179,5 @@ def test_verify_release_zip_setup_runs_from_extracted_root(monkeypatch, tmp_path
 
     assert len(calls) == 1
     _cmd, cwd, check = calls[0]
-    assert cwd.name == "stechdrive-3dgs-utils-v9.9.9"
+    assert cwd.name == "360gs-studio-v9.9.9"
     assert check is True

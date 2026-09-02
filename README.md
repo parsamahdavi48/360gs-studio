@@ -1,22 +1,32 @@
-# stechdrive-3dgs-utils
+# 360GS Studio
 
-**v1.25.2**
+**v0.1.0 foundation**
 
 ## What Is This?
 
-A Windows GUI app that prepares images, masks, and camera data for 3D Gaussian Splatting (3DGS) training from 360° video, normal video, and still-image sequences.
+A Windows workstation that unifies 360° media preparation, perspective exports, masking, SfM, dataset conversion, scene inspection, scale estimation, and external 3D Gaussian Splatting trainer launchers.
+
+This repository preserves and extends the mature `stechdrive-3dgs-utils` pipeline. The new `gs360studio` package adds versioned project/job/view/component contracts, non-destructive legacy migration, a resumable job store, external-tool adapters, component verification, diagnostics, a shared projection engine, and a dedicated Perspective Export workspace.
+
+## Current status
+
+v0.1 is an engineering foundation, not a stable release. The inherited six-stage workflow remains available, and the new seventh workspace supports arbitrary yaw/pitch/roll views, independent horizontal/vertical FOV, per-view resolution, cached preview projection, PNG/JPEG sequences, silent HEVC exports, presets, and COLMAP rigs.
+
+Run from a Python 3.12 development environment:
+
+```powershell
+python -m gs360studio gui
+python -m gs360studio doctor
+python -m gs360studio export-views --project C:\scene --profile cubemap
+```
+
+See [ROADMAP.md](ROADMAP.md), [CONTRIBUTING.md](CONTRIBUTING.md), and the [architecture decisions](doc/adr/README.md).
 
 The main workflow is to organize and mask ERP/equirectangular footage from cameras such as Insta360 / Osmo 360, run SfM in Metashape, then convert the result into datasets for Postshot, Brush, LichtFeld Studio, COLMAP-format workflows, or RealityScan realignment. It also supports normal-camera images/video, in-app COLMAP routes including COLMAP 4.1+ native spherical SfM, and RealityScan-to-LichtFeld conversion.
 
-## Download
+## Upstream heritage
 
-For normal use, download the latest release ZIP:
-
-[Download stechdrive-3dgs-utils-v1.25.2.zip](https://github.com/stechdrive/stechdrive-3dgs-utils/releases/download/v1.25.2/stechdrive-3dgs-utils-v1.25.2.zip)
-
-After extracting the ZIP, run `setup_windows.bat`, then `run_gui.bat`.
-
-[JP 日本語の説明](README.ja.md)
+The material below documents the inherited workflow while the 360GS Studio documentation is being consolidated. See [NOTICE.md](NOTICE.md) and [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) for provenance.
 
 ![STechDrive 3DGS Utils GUI](images/stechdrive-3dgs-utils-gui.jpg)
 

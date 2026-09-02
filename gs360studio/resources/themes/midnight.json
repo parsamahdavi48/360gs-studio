@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "theme_id": "midnight",
+  "display_name": "Midnight",
+  "colors": {
+    "background": "#17191F",
+    "surface": "#232630",
+    "surface_bright": "#303541",
+    "primary": "#5AA7FF",
+    "secondary": "#A66FE0",
+    "text": "#F3F6FC",
+    "text_dim": "#9CA6B8",
+    "border": "#41495A",
+    "success": "#45C86C",
+    "warning": "#F2A444",
+    "error": "#E65D59"
+  },
+  "metrics": {
+    "window_rounding": 7,
+    "frame_rounding": 4,
+    "spacing": 6,
+    "toolbar_size": 26
+  }
+}

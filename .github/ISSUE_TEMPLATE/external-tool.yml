@@ -1,0 +1,19 @@
+name: External tool failure
+description: Report an adapter or launch failure
+title: "adapter: "
+labels: ["area: adapters"]
+body:
+  - type: dropdown
+    id: tool
+    attributes:
+      label: Tool
+      options: [FFmpeg, COLMAP, Metashape, RealityScan, LichtFeld, Postshot, Brush, gsplat, Other]
+    validations: {required: true}
+  - type: textarea
+    id: versions
+    attributes: {label: Tool version, path, capabilities, and doctor output}
+    validations: {required: true}
+  - type: textarea
+    id: failure
+    attributes: {label: Failure and relevant log excerpt}
+    validations: {required: true}

@@ -1,64 +1,52 @@
-# Third-Party Licenses and Model Terms
+# Third-party licenses
 
-This repository's own source code is licensed under the MIT License.
+The application source is MIT licensed. Distributions must also include the
+license texts for bundled dependencies and managed components.
 
-Some optional features download or use third-party libraries and model weights
-that are governed by separate license terms.
+| Component | Role | License handling |
+|---|---|---|
+| stechdrive-3dgs-utils | Primary source foundation | MIT notice retained in `LICENSE` and `NOTICE.md` |
+| Insta360Convert-GUI | Feature reference | MIT notice acknowledged; implementation is new |
+| PySide6 / Qt | Desktop UI | LGPL/commercial terms; include Qt notices and relinking information in builds |
+| FFmpeg / FFprobe | Media processing | Build-dependent LGPL/GPL notices shown before installation |
+| OpenCV, NumPy, Pillow | Image processing | Licenses collected into release bundle |
+| COLMAP | SfM integration | Separate executable; license shown by component manager |
+| Inter | Typography | OFL-1.1; bundle only the unmodified upstream font and license |
+| LichtFeld Studio | External trainer | GPLv3 application detected or selected by the user; never bundled |
+| Postshot | External trainer | Proprietary application selected by the user; never bundled |
+| Brush / gsplat | External trainer | Separate installations; never silently downloaded |
 
-## YOLO/SAM Mask Feature
+`scripts/build_sbom.py` is intended to generate the exact dependency inventory
+for a release. Component manifests must contain a license identifier and SHA-256
+before a managed download can be enabled.
 
-The YOLO/SAM mask feature may use the `ultralytics` Python package and
-Ultralytics YOLO model weights such as `yolo26m.pt`, `yolo26l.pt`, and
-`yolo26x.pt`. Ultralytics YOLO code and trained models are licensed under
-AGPL-3.0 by default, with an Ultralytics Enterprise License available for
-proprietary commercial use.
+## YOLO and SAM mask features
 
-The same feature may use Meta Segment Anything Model 2 / 2.1 checkpoints such
-as `sam2.1_l.pt`. SAM2 model checkpoints and code are licensed under the Apache
-License 2.0 by Meta.
-
-Model weights are not included in this repository or release archives. YOLO and
-SAM2/SAM2.1 weights may be downloaded by the user's environment on first use, or
-provided by the user as local files. Local YOLO/SAM `.pt` files should be placed under
-`models/ultralytics/`; legacy `.pt` files in the repository root are still
-detected for compatibility.
-
-Users are responsible for ensuring that their use, redistribution, deployment,
-or commercial integration complies with the applicable third-party license
-terms.
-
-References:
-
-- Ultralytics License: https://www.ultralytics.com/license
-- Meta SAM2 repository: https://github.com/facebookresearch/sam2
-
-## Semantic and Prompt Mask Features
-
-The semantic/prompt mask features may use Ultralytics YOLO26 semantic model
-files such as `yolo26s-sem.pt` for Cityscapes-style semantic segmentation. They
-may also use Meta's `sam3` Python package and a Meta SAM3.1 checkpoint such as
-`sam3.1_multiplex.pt`.
-
-Ultralytics YOLO code and trained models are licensed under AGPL-3.0 by default,
-with an Ultralytics Enterprise License available for proprietary commercial use.
-Cityscapes dataset materials are governed by the dataset provider's terms. Meta
-SAM3.1 materials, including model code and trained weights, are governed by the
-SAM License provided by Meta.
-
-Model weights are not included in this repository or release archives.
-YOLO26-sem weights may be downloaded by the user's environment on first use, or
-provided by the user as local files under `models/ultralytics/`. SAM3.1
-checkpoints may be downloaded after the user has access to `facebook/sam3.1`
-and has accepted the SAM License, or provided as local files under
-`models/sam3.1/`.
-
-Users are responsible for ensuring that their use, redistribution, deployment,
-or commercial integration complies with the applicable third-party license and
-dataset terms.
+Optional masking may use the `ultralytics` package and YOLO model weights.
+Ultralytics YOLO code and trained models use AGPL-3.0 by default, with a
+separate enterprise license available from Ultralytics. Optional SAM2 / SAM2.1
+code and checkpoints are provided by Meta under Apache-2.0. Model weights are
+not included in this repository or its release archives.
 
 References:
 
-- Ultralytics License: https://www.ultralytics.com/license
-- Cityscapes terms: https://www.cityscapes-dataset.com/license/
-- Meta SAM3.1 model: https://huggingface.co/facebook/sam3.1
-- Meta SAM3 repository: https://github.com/facebookresearch/sam3
+- [Ultralytics license](https://www.ultralytics.com/license)
+- [Meta SAM2](https://github.com/facebookresearch/sam2)
+
+## Semantic and prompt mask features
+
+Optional semantic masking may use YOLO26 semantic weights and Cityscapes class
+definitions. Prompt masking may use Meta SAM3.1 code and checkpoints, governed
+by Meta's SAM License. Users must obtain gated weights and accept their terms;
+weights are not bundled. Local Ultralytics weights belong under
+`models/ultralytics/`, and local SAM3.1 checkpoints under `models/sam3.1/`.
+
+References:
+
+- [Cityscapes terms](https://www.cityscapes-dataset.com/license/)
+- [Meta SAM3.1 model](https://huggingface.co/facebook/sam3.1)
+- [Meta SAM3 repository](https://github.com/facebookresearch/sam3)
+
+Users are responsible for ensuring that their use, redistribution, deployment,
+or commercial integration complies with every applicable third-party license,
+model license, and dataset term.

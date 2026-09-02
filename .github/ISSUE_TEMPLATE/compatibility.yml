@@ -1,0 +1,17 @@
+name: Compatibility issue
+description: Report a camera, path, codec, GPU, or legacy-project problem
+title: "compat: "
+labels: ["type: compatibility"]
+body:
+  - type: textarea
+    id: environment
+    attributes: {label: Environment and doctor output}
+    validations: {required: true}
+  - type: textarea
+    id: input
+    attributes: {label: Input or legacy project characteristics}
+    validations: {required: true}
+  - type: textarea
+    id: behavior
+    attributes: {label: Expected and actual behavior}
+    validations: {required: true}

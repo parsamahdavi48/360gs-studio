@@ -15,9 +15,9 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any
 
-APP_NAME = "stechdrive-3dgs-utils"
+APP_NAME = "360gs-studio"
 GITHUB_OWNER = "stechdrive"
-GITHUB_REPO = "stechdrive-3dgs-utils"
+GITHUB_REPO = "360gs-studio"
 GITHUB_API_BASE = f"https://api.github.com/repos/{GITHUB_OWNER}/{GITHUB_REPO}"
 LATEST_RELEASE_API = f"{GITHUB_API_BASE}/releases/latest"
 RELEASE_MANIFEST_NAME = "release_manifest.json"
@@ -28,14 +28,20 @@ MANAGED_TOP_LEVEL_DIRS = {
     "core",
     "doc",
     "gui",
+    "gs360studio",
     "images",
     "requirements",
     "scripts",
+    "packaging",
 }
 
 MANAGED_TOP_LEVEL_FILES = {
     ".gitignore",
     "LICENSE",
+    "NOTICE.md",
+    "CONTRIBUTING.md",
+    "CHANGELOG.md",
+    "ROADMAP.md",
     "README.ja.md",
     "README.md",
     "THIRD_PARTY_LICENSES.md",
@@ -723,7 +729,7 @@ def main() -> int:
             target_version = name[len(prefix) :]
         emit(f"[INFO] Using local release ZIP: {zip_path}")
 
-    with tempfile.TemporaryDirectory(prefix="stechdrive-update-stage-") as temp_dir:
+    with tempfile.TemporaryDirectory(prefix="360gs-update-stage-") as temp_dir:
         staged = validate_release_zip(zip_path, expected_version=target_version, extract_parent=Path(temp_dir))
         backup_dir = apply_release(
             repo_root,

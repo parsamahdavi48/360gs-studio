@@ -19,7 +19,7 @@ if not exist ".venv\Scripts\python.exe" (
 
 call :add_winget_ffmpeg_to_path
 
-".venv\Scripts\python.exe" -m gui.app %*
+".venv\Scripts\python.exe" -m gs360studio gui %*
 exit /b %ERRORLEVEL%
 
 :add_winget_ffmpeg_to_path

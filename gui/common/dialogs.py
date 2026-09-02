@@ -28,3 +28,12 @@ def get_open_file_names(
     filter_str: str = "",
 ) -> tuple[list[str], str]:
     return QFileDialog.getOpenFileNames(parent, title, start_dir, filter_str)
+
+
+def get_save_file_name(
+    parent: QWidget | None,
+    title: str,
+    start_dir: str = "",
+    filter_str: str = "",
+) -> tuple[str, str]:
+    return QFileDialog.getSaveFileName(parent, title, start_dir, filter_str)

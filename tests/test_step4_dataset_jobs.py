@@ -641,7 +641,7 @@ def test_lichtfeld_3dgut_direct_mode_runs_metashape_only_and_disables_view_expor
     assert step.export_masks_cb.isChecked()
     assert not step.output_details_section.isEnabled()
     assert not step.export_colmap_cb.isEnabled()
-    assert "元画像" in step.view_config.summary_text()
+    assert i18n.t("OUTPUT_IMAGE_COUNT_DIRECT_FORMAT").format(count=1) in step.view_config.summary_text()
 
     commands = step.build_commands()
 

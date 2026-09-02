@@ -1,0 +1,22 @@
+name: Bug report
+description: Report reproducible incorrect behavior
+title: "fix: "
+labels: ["type: bug"]
+body:
+  - type: textarea
+    id: summary
+    attributes: {label: What happened?}
+    validations: {required: true}
+  - type: textarea
+    id: reproduce
+    attributes: {label: Reproduction steps}
+    validations: {required: true}
+  - type: textarea
+    id: doctor
+    attributes: {label: Doctor output, logs, and build version}
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options: [Import, Review, Masks, SfM, Dataset, Training adapter, Perspective export, Packaging]
+    validations: {required: true}
