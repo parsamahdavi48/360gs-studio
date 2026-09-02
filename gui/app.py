@@ -9,7 +9,7 @@ import shutil
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import QSettings, QSignalBlocker, QSize, Qt, QUrl
+from PySide6.QtCore import QSettings, QSignalBlocker, QSize, Qt, QTimer, QUrl
 from PySide6.QtGui import QAction, QActionGroup, QCloseEvent, QDesktopServices, QIcon
 from PySide6.QtWidgets import (
     QApplication,
@@ -976,6 +976,11 @@ def main() -> None:
         help=argparse.SUPPRESS,
     )
     parser.add_argument(
+        "--smoke-test",
+        action="store_true",
+        help=argparse.SUPPRESS,
+    )
+    parser.add_argument(
         "--version",
         action="version",
         version=f"{i18n.APP_TITLE} {app_version_label()}",
@@ -990,6 +995,8 @@ def main() -> None:
     window = MainWindow(initial_scene_dir=initial_scene)
     app.aboutToQuit.connect(window.shutdown)
     window.show()
+    if args.smoke_test:
+        QTimer.singleShot(1000, app.quit)
     sys.exit(app.exec())
 
 

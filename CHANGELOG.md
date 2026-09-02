@@ -6,6 +6,14 @@ All notable changes follow Keep a Changelog and semantic versioning.
 
 - Continue workstation-shell, component-manager, updater-signing, recovery and installer work toward v0.2–v0.9.
 
+## [0.1.0-dev.1] - 2026-09-03
+
+### Added
+
+- First Windows development preview with a portable ZIP and Inno Setup installer.
+- Deterministic SHA-256 checksum list, release manifest, SBOM, and bundled license notices.
+- Frozen desktop/CLI smoke tests and isolated DLL collection for reproducible packaging.
+
 ## [0.1.0] - 2026-09-02
 
 ### Added

@@ -12,6 +12,8 @@ This repository preserves and extends the mature `stechdrive-3dgs-utils` pipelin
 
 v0.1 is an engineering foundation, not a stable release. The inherited six-stage workflow remains available, and the new seventh workspace supports arbitrary yaw/pitch/roll views, independent horizontal/vertical FOV, per-view resolution and interpolation, cached preview projection, PNG/JPEG sequences, silent HEVC exports, presets, and COLMAP rigs. Project frames flow directly into Perspective Export, live progress is persisted, cancellation cleans staging output, and interrupted configurations can be restored and rerun with provenance linking.
 
+Development previews are published on the [Releases page](https://github.com/parsamahdavi48/360gs-studio/releases). Windows users can choose the installer or portable ZIP; both include the desktop app, CLI, core CPU runtime, license notices, and require no system Python. Prerelease builds may be unsigned, so verify downloads with the published `SHA256SUMS.txt` before running them.
+
 Run from a Python 3.12 development environment:
 
 ```powershell

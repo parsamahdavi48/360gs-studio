@@ -15,7 +15,7 @@
 
 ## Current release status
 
-The project is in the v0.2 workstation-shell stage. Treat builds as prerelease software and keep original capture files outside the project output folders.
+The project has a v0.1 development-preview pipeline with the workstation shell, Persian localization, integrated Perspective Export, resumable jobs, and reproducible Windows packaging. Treat builds as prerelease software and keep original capture files outside the project output folders.
 
 ## Supported project layout
 

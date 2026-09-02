@@ -7,6 +7,9 @@ on:
 jobs:
   windows:
     runs-on: windows-latest
+    env:
+      WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+      WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
     permissions:
       contents: write
       id-token: write
@@ -19,11 +22,8 @@ jobs:
       - shell: pwsh
         run: ./packaging/build_windows.ps1
       - name: Authenticode sign executables
-        if: ${{ secrets.WINDOWS_CERTIFICATE != '' }}
+        if: ${{ env.WINDOWS_CERTIFICATE != '' }}
         shell: pwsh
-        env:
-          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
-          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
         run: |
           $pfxPath = Join-Path $env:RUNNER_TEMP "360gs-signing.pfx"
           [IO.File]::WriteAllBytes($pfxPath, [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE))
@@ -33,16 +33,49 @@ jobs:
             $result = Set-AuthenticodeSignature -FilePath $_.FullName -Certificate $certificate -HashAlgorithm SHA256 -TimestampServer "http://timestamp.digicert.com"
             if ($result.Status -ne "Valid") { throw "Signing failed for $($_.Name): $($result.StatusMessage)" }
           }
-      - shell: pwsh
-        run: Compress-Archive -Path 'dist/360GS Studio/*' -DestinationPath 'dist/360GS-Studio-portable.zip'
-      - shell: pwsh
-        run: Get-FileHash dist/360GS-Studio-portable.zip -Algorithm SHA256 | ConvertTo-Json | Set-Content dist/checksums.json
-      - uses: softprops/action-gh-release@v2
+      - name: Build portable ZIP and installer
+        shell: pwsh
+        run: |
+          $releaseVersion = "${{ github.ref_name }}".TrimStart("v")
+          $portable = "dist/360GS-Studio-$releaseVersion-windows-x64-portable.zip"
+          Compress-Archive -Path 'dist/360GS Studio/*' -DestinationPath $portable
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path -LiteralPath $iscc)) {
+            choco install innosetup --no-progress -y
+          }
+          & $iscc "/DMyAppVersion=$releaseVersion" "packaging/360GS-Studio.iss"
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed with exit code $LASTEXITCODE" }
+      - name: Authenticode sign installer
+        if: ${{ env.WINDOWS_CERTIFICATE != '' }}
+        shell: pwsh
+        run: |
+          $releaseVersion = "${{ github.ref_name }}".TrimStart("v")
+          $pfxPath = Join-Path $env:RUNNER_TEMP "360gs-signing.pfx"
+          [IO.File]::WriteAllBytes($pfxPath, [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE))
+          $password = ConvertTo-SecureString $env:WINDOWS_CERTIFICATE_PASSWORD -AsPlainText -Force
+          $certificate = Import-PfxCertificate -FilePath $pfxPath -CertStoreLocation Cert:\CurrentUser\My -Password $password
+          $installer = "dist/360GS-Studio-$releaseVersion-setup.exe"
+          $result = Set-AuthenticodeSignature -FilePath $installer -Certificate $certificate -HashAlgorithm SHA256 -TimestampServer "http://timestamp.digicert.com"
+          if ($result.Status -ne "Valid") { throw "Signing failed for the installer: $($result.StatusMessage)" }
+      - name: Build checksums and release manifest
+        shell: pwsh
+        run: |
+          $releaseVersion = "${{ github.ref_name }}".TrimStart("v")
+          python scripts/build_release_manifest.py --version $releaseVersion --output-dir dist `
+            "dist/360GS-Studio-$releaseVersion-windows-x64-portable.zip" `
+            "dist/360GS-Studio-$releaseVersion-setup.exe" `
+            "dist/sbom.cdx.json"
+      - uses: softprops/action-gh-release@v2.6.2
         with:
           generate_release_notes: true
+          body_path: RELEASE_NOTES.md
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          name: 360GS Studio ${{ github.ref_name }}
           files: |
-            dist/360GS-Studio-portable.zip
-            dist/checksums.json
+            dist/360GS-Studio-*-windows-x64-portable.zip
+            dist/360GS-Studio-*-setup.exe
+            dist/SHA256SUMS.txt
+            dist/release-manifest.json
             dist/sbom.cdx.json
             LICENSE
             NOTICE.md

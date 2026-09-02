@@ -1,5 +1,7 @@
 #define MyAppName "360GS Studio"
+#ifndef MyAppVersion
 #define MyAppVersion "0.1.0"
+#endif
 #define MyAppPublisher "360GS Studio contributors"
 #define MyAppExeName "360GS Studio.exe"
 
@@ -14,6 +16,7 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 Compression=lzma2
 SolidCompression=yes
+OutputDir=..\dist
 OutputBaseFilename=360GS-Studio-{#MyAppVersion}-setup
 WizardStyle=modern
 PrivilegesRequired=lowest
